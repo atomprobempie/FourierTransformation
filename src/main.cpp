@@ -1,39 +1,22 @@
 #include <iostream>
-#include <string.h>
 #include <fstream>
+#include <string.h>
 #include <iomanip>
 #include <stdint.h>
-#include <vector>
+
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <vector>
 
 int main() {
+    //functions
+    void readInputFile(std::string path, std::string outputPath, std::vector<float>& dataList);
+
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::vector<float> OutputListRe; //Re part
     std::vector<float> OutputListIm; //Im part
-    { //reading file section
-        std::ifstream file;
-        std::ofstream outputfile; ///DEV
-        uint32_t number;
-        float floatnum;
-        file.open("data/test.pos", std::ios::in | std::ios::binary);
-        outputfile.open("data/output.txt", std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
-        for (uint32_t i = 0; file.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
-            //convert little endian to big endian because the input is 32bit float big endian
-            number = (__builtin_bswap32(number));
-            char* pcUnsInt = (char*)&number;
-            char* pcFloatNum = (char*)&floatnum;
-            memcpy(pcFloatNum, pcUnsInt, sizeof(number));
 
-            if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
-                dataList.push_back(floatnum);
-            }
-            outputfile << std::setprecision(32) << floatnum << std::endl; ///DEV
-        }
-        file.close();
-        outputfile.close();
-    } //end - reading file section
-
+    readInputFile("data/test.pos", "data/output.txt", dataList);
 /* //test values
 dataList.push_back(6.300058841705322265625);
 dataList.push_back(11.27175426483154296875);
@@ -54,13 +37,14 @@ dataList.push_back(9.89614772796630859375);
 (-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
 (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
 */
+
     { //DFT
-        const uint32_t M = (dataList.size() / 3);
+        const unsigned int M = (dataList.size() / 3);
         std::cout << M << std::endl;
         float tempRe = 0;
         float tempIm = 0;
         const float* curValue = NULL;
-        const uint32_t N = 3; // number of columns
+        const unsigned int N = 3; // number of columns
 
         /*
         using a 2D matrix
@@ -71,14 +55,14 @@ dataList.push_back(9.89614772796630859375);
         M = :    ||  ::  |  ::  |  ::  ||
         M = M-1  || xM-1 | yM-1 | zM-1 ||
         */
-        for (uint32_t m = 0; m < M; m++) { //row
+        for (unsigned int m = 0; m < M; m++) { //row
             if (m % 1000 == 0) //show status
             std::cout << m << "/" << M << std::endl;
-            for (uint32_t n = 0; n < N; n++) { //column
+            for (unsigned int n = 0; n < N; n++) { //column
                 tempRe = 0;
                 tempIm = 0;
-                for (uint32_t k = 0; (k < M); k++) { //sum of all row
-                    for (uint32_t j = 0; (j < N); j++) { //sum of all column at the current row
+                for (unsigned int k = 0; (k < M); k++) { //sum of all row
+                    for (unsigned int j = 0; (j < N); j++) { //sum of all column at the current row
                         curValue = &dataList[k * 3 + j];
                         tempRe += *curValue * ( std::cos( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) );
                         tempIm += *curValue * ( std::sin( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) );
@@ -93,13 +77,36 @@ dataList.push_back(9.89614772796630859375);
 
     { //save DFT to file
         std::ofstream outputfile; ///DEV
-        const uint32_t listSize = (dataList.size() / 3); // Define the Size of the read in vector
+        const unsigned int listSize = (dataList.size() / 3); // Define the Size of the read in vector
         outputfile.open("data/DFToutput.txt", std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
-        for (uint32_t i = 0; i < listSize; i++) {
+        for (unsigned int i = 0; i < listSize; i++) {
             outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3] << ", " << OutputListIm[i * 3] << ")\t"; ///DEV
             outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 1] << ", " << OutputListIm[i * 3 + 1] << ")\t"; ///DEV
             outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 2] << ", " << OutputListIm[i * 3 + 2] << ")" << std::endl; ///DEV
         }
     }
     return 0;
+}
+
+void readInputFile(std::string path, std::string outputPath, std::vector<float>& dataList) { ///NOTE: changes dataList
+    std::ifstream file;
+    std::ofstream outputfile; ///DEV
+    uint32_t number;
+    float floatnum;
+    file.open(path, std::ios::in | std::ios::binary);
+    outputfile.open(outputPath, std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
+    for (unsigned int i = 0; file.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
+        //convert little endian to big endian because the input is 32bit float big endian
+        number = (__builtin_bswap32(number));
+        char* pcUnsInt = (char*)&number;
+        char* pcFloatNum = (char*)&floatnum;
+        memcpy(pcFloatNum, pcUnsInt, sizeof(number));
+
+        if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
+            dataList.push_back(floatnum);
+        }
+        outputfile << std::setprecision(32) << floatnum << std::endl; ///DEV
+    }
+    file.close();
+    outputfile.close();
 }
