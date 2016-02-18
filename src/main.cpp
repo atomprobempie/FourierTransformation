@@ -31,28 +31,30 @@ int main() {
     void calcPartSize(std::vector<unsigned int>& bounds, const unsigned int numbers, const unsigned int& cores);
     void DFT(std::vector<float>& dataList, unsigned int start, unsigned int M, std::vector<float>& outputListRe, std::vector<float>& outputListIm);
 
+    //read data from file
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     //readInputFile("data/test.pos", "data/output.txt", dataList);
- //test values
-dataList.push_back(6.300058841705322265625);
-dataList.push_back(11.27175426483154296875);
-dataList.push_back(9.9945583343505859375);
-dataList.push_back(6.81645107269287109375);
-dataList.push_back(10.869720458984375);
-dataList.push_back(9.98496723175048828125);
-dataList.push_back(6.258909702301025390625);
-dataList.push_back(11.07165622711181640625);
-dataList.push_back(9.96583461761474609375);
-dataList.push_back(6.63667011260986328125);
-dataList.push_back(11.12175464630126953125);
-dataList.push_back(9.89614772796630859375);
 
-/* results:
-(110.1884918212890625, 0)	(-16.076107025146484375, -3.8913784027099609375)	(-16.076107025146484375, 3.8913784027099609375)
-(0.2699718475341796875, -0.016567230224609375)	(0.2219267189502716064453125, -0.40980243682861328125)	(-0.3684501945972442626953125, -0.1129741668701171875)
-(-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
-(0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
-*/
+    //test values
+    dataList.push_back(6.300058841705322265625);
+    dataList.push_back(11.27175426483154296875);
+    dataList.push_back(9.9945583343505859375);
+    dataList.push_back(6.81645107269287109375);
+    dataList.push_back(10.869720458984375);
+    dataList.push_back(9.98496723175048828125);
+    dataList.push_back(6.258909702301025390625);
+    dataList.push_back(11.07165622711181640625);
+    dataList.push_back(9.96583461761474609375);
+    dataList.push_back(6.63667011260986328125);
+    dataList.push_back(11.12175464630126953125);
+    dataList.push_back(9.89614772796630859375);
+
+    /* results:
+    (110.1884918212890625, 0)	(-16.076107025146484375, -3.8913784027099609375)	(-16.076107025146484375, 3.8913784027099609375)
+    (0.2699718475341796875, -0.016567230224609375)	(0.2219267189502716064453125, -0.40980243682861328125)	(-0.3684501945972442626953125, -0.1129741668701171875)
+    (-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
+    (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
+    */
 
     { //DFT
         const unsigned int maxThreads = std::thread::hardware_concurrency(); //get the max threads which will be supported
@@ -85,17 +87,17 @@ dataList.push_back(9.89614772796630859375);
         std::cout << difftime(end, start) << std::endl; ///DEV
         std::cout << "DONE!" << std::endl; ///DEV
     } //end - DFT
-/*
-    { //save DFT to file
-        std::ofstream outputfile; ///DEV
-        const unsigned int listSize = (dataList.size() / 3); // Define the Size of the read in vector
-        outputfile.open("data/DFToutput.txt", std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
-        for (unsigned int i = 0; i < listSize; i++) {
-            outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3] << ", " << OutputListIm[i * 3] << ")\t"; ///DEV
-            outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 1] << ", " << OutputListIm[i * 3 + 1] << ")\t"; ///DEV
-            outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 2] << ", " << OutputListIm[i * 3 + 2] << ")" << std::endl; ///DEV
-        }
-    }*/
+    /*
+        { //save DFT to file
+            std::ofstream outputfile; ///DEV
+            const unsigned int listSize = (dataList.size() / 3); // Define the Size of the read in vector
+            outputfile.open("data/DFToutput.txt", std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
+            for (unsigned int i = 0; i < listSize; i++) {
+                outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3] << ", " << OutputListIm[i * 3] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 1] << ", " << OutputListIm[i * 3 + 1] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << OutputListRe[i * 3 + 2] << ", " << OutputListIm[i * 3 + 2] << ")" << std::endl; ///DEV
+            }
+        }*/
     return 0;
 }
 
@@ -118,7 +120,7 @@ void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, st
     */
     for (unsigned int m = start; m < ends; m++) { //row
         if (m % 1000 == 0) //show status
-        std::cout << m << "/" << M << std::endl;
+            std::cout << m << "/" << M << std::endl;
         for (unsigned int n = 0; n < N; n++) { //column
             tempRe = 0;
             tempIm = 0;
@@ -168,7 +170,7 @@ void calcPartSize(std::vector<unsigned int>& bounds, const unsigned int numbers,
         if (i <= (numbers % cores)) {
             bounds.push_back(bounds[i - 1] + partsize + 1);
         } else {
-             bounds.push_back(bounds[i - 1] + partsize);
+            bounds.push_back(bounds[i - 1] + partsize);
         }
     }
 }
