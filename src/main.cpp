@@ -15,18 +15,24 @@
 
 int main() {
     //functions
-    void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList);
+    void readInputFile(const std::string path, std::vector<float>& dataList);
     void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
     void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
     const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
     const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
+    std::string getProgressBar(int percent);
+
 
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
-    std::cout << "START: write source data to file" << std::endl; //status msg
-    readInputFile("data/test.pos", "data/output.txt", std::ref(dataList)); //read data from file and save it into dataList
+    std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
+    readInputFile("data/test.pos", std::ref(dataList)); //read data from file and save it into dataList
     std::cout << "DONE: import data" << std::endl; //status msg
-    std::cout << "DONE: write source data to file" << std::endl; //status msg
+
+    //std::cout << "START: write source data to file" << std::endl; //status msg
+    //std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
+    //save source data here if its needed
+    //std::cout << "DONE: write source data to file" << std::endl; //status msg
 /*
     //test values
     dataList.push_back(6.300058841705322265625);
@@ -96,8 +102,40 @@ int main() {
         std::cout << "NOTE: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
     } //end - DFT
 
-    saveToFile(std::ref(outputList), "data/DFToutput.txt"); //save to file
+    saveToFile(std::ref(outputList), "data/DFToutput.txt"); //save DFT results to file
     return 0;
+}
+
+void readInputFile(const std::string path, std::vector<float>& dataList) { ///NOTE: changes dataList
+    std::ifstream inputFile;
+    uint32_t number;
+    float floatnum;
+    inputFile.open(path, std::ios::in | std::ios::binary);
+    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
+        //convert little endian to big endian because the input is 32bit float big endian
+        number = (__builtin_bswap32(number));
+        char* pcUnsInt = (char*)&number;
+        char* pcFloatNum = (char*)&floatnum;
+        memcpy(pcFloatNum, pcUnsInt, sizeof(number));
+
+        if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
+            dataList.push_back(floatnum);
+        }
+    }
+    inputFile.close();
+}
+
+void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
+    unsigned int partsize = numbers / cores;
+
+    boundsList.push_back(0); //start bound is 0
+    for (unsigned int i = 1; i <= cores; i++) {
+        if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
+            boundsList.push_back(boundsList[i - 1] + partsize + 1);
+        } else {
+            boundsList.push_back(boundsList[i - 1] + partsize);
+        }
+    }
 }
 
 void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
@@ -134,35 +172,6 @@ void DFT(const std::vector<float>& dataList, const unsigned int start, const uns
     }
 }
 
-const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
-    std::string getProgressBar(const float percent);
-
-    std::ofstream outputfile; ///DEV
-    outputfile.open(DFToutputPath, std::ios::out | std::ios::trunc); //ios::trunc just for better viewing (is default)
-
-    unsigned int finishValue = 0;
-    for(auto threadList : outputList) { //loop through all thread lists
-        finishValue += (threadList.size() / 6);
-    }
-
-    unsigned int curRawProgress = 0;
-    std::vector<float> tempSave;
-    for(auto threadList : outputList) { //loop through all thread lists
-        for(auto curValue : threadList) { //loop through all numbers of the thread list
-            tempSave.push_back(curValue); //save temporary all numbers for one point before writing into file
-            if (tempSave.size() == 6) { //write into file
-                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ")\t"; ///DEV
-                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t"; ///DEV
-                outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl; ///DEV
-                tempSave.clear();
-                curRawProgress++;
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
-            }
-        }
-    }
-    outputfile.close();
-}
-
 const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage and absolut
     //function
     std::string getProgressBar(const float percent);
@@ -172,11 +181,11 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
         tmpCurRawProgress = 0;
         for(auto curVec : outputList) {
-            tmpCurRawProgress += (curVec.size() / 3);
+            tmpCurRawProgress += (curVec.size() / 6);
         }
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
-            switch(showBarTheme) {
+            switch(showBarTheme) { //show progressbar
                 case 0:
                     std::cout << "\r" << curRawProgress << " / " << finishValue;
                     break;
@@ -191,42 +200,6 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
         sleep(updateTime); //in seconds
     }
     std::cout << std::endl;
-}
-
-void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList) { ///NOTE: changes dataList
-    std::ifstream file;
-    std::ofstream outputfile; ///DEV
-    uint32_t number;
-    float floatnum;
-    file.open(path, std::ios::in | std::ios::binary);
-    outputfile.open(outputPath, std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
-    for (unsigned int i = 0; file.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
-        //convert little endian to big endian because the input is 32bit float big endian
-        number = (__builtin_bswap32(number));
-        char* pcUnsInt = (char*)&number;
-        char* pcFloatNum = (char*)&floatnum;
-        memcpy(pcFloatNum, pcUnsInt, sizeof(number));
-
-        if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
-            dataList.push_back(floatnum);
-        }
-        outputfile << std::setprecision(32) << floatnum << std::endl; ///DEV
-    }
-    file.close();
-    outputfile.close();
-}
-
-void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
-    unsigned int partsize = numbers / cores;
-
-    boundsList.push_back(0); //start bound is 0
-    for (unsigned int i = 1; i <= cores; i++) {
-        if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
-            boundsList.push_back(boundsList[i - 1] + partsize + 1);
-        } else {
-            boundsList.push_back(boundsList[i - 1] + partsize);
-        }
-    }
 }
 
 std::string getProgressBar(const int percent) { //progressbar without numbers after the decimal point
@@ -264,4 +237,33 @@ std::string getProgressBar(const float percent) { //progressbar with numbers aft
     progressBar << " ";
     progressBar << secondPart; //smelt both parts to one
     return progressBar.str();
+}
+
+const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
+    std::string getProgressBar(const float percent);
+
+    std::ofstream outputfile; ///DEV
+    outputfile.open(DFToutputPath, std::ios::out | std::ios::trunc); //ios::trunc just for better viewing (is default)
+
+    unsigned int finishValue = 0;
+    for(auto threadList : outputList) { //loop through all thread lists
+        finishValue += (threadList.size() / 6);
+    }
+
+    unsigned int curRawProgress = 0;
+    std::vector<float> tempSave;
+    for(auto threadList : outputList) { //loop through all thread lists
+        for(auto curValue : threadList) { //loop through all numbers of the thread list
+            tempSave.push_back(curValue); //save temporary all numbers for one point before writing into file
+            if (tempSave.size() == 6) { //write into file
+                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl; ///DEV
+                tempSave.clear();
+                curRawProgress++;
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
+            }
+        }
+    }
+    outputfile.close();
 }
