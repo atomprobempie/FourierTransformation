@@ -1,24 +1,13 @@
-/*
-TODO:
-
-programm should run
-
-save results to file
-
-maybe easier structur for saving the results, this is not nice:
-    std::vector< std::vector<float> > outputListRe;
-    std::vector< std::vector<float> > outputListIm;
-    DFT(dataList, bounds[i], bounds[i+1], outputListRe[i], outputListIm[i]);
-
-*/
-
 #include <iostream>
 #include <fstream>
 #include <string.h>
+
 #include <iomanip>
 #include <stdint.h>
 #include <thread>
+
 #include <time.h>
+#include <unistd.h>
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -27,12 +16,14 @@ maybe easier structur for saving the results, this is not nice:
 int main() {
     //functions
     void readInputFile(std::string path, std::string outputPath, std::vector<float>& dataList);
-    void calcPartSize(std::vector<unsigned int>& bounds, const unsigned int numbers, const unsigned int& cores);
-    void DFT(std::vector<float>& dataList, unsigned int start, unsigned int M, std::vector<float>& outputList);
+    void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, std::vector<float>& threadOutputList);
+    void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
+    const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue);
+    const void saveToFile(const std::vector< std::vector<float> >& outputList, std::string DFToutputPath);
 
-    //read data from file
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
-    readInputFile("data/test.pos", "data/output.txt", dataList);
+    readInputFile("data/test.pos", "data/output.txt", std::ref(dataList)); //read data from file and save it into dataList
+
 /*
     //test values
     dataList.push_back(6.300058841705322265625);
@@ -56,73 +47,56 @@ int main() {
     */
 
     //set the max threads which can be used
-    unsigned int tmpMaxThreads;
-    if ((std::thread::hardware_concurrency()) > ((dataList.size() / 3) / 2))  { //prevent of using more threads as indices
-        tmpMaxThreads = ((dataList.size() / 3) / 2); //use at least indices / 2 threads
-    } else {
-        tmpMaxThreads = std::thread::hardware_concurrency();
+    unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
+    if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
+        if (tmpMaxThreads > ((dataList.size() / 3) / 2))  { //prevent of using more threads as indices
+            tmpMaxThreads = ((dataList.size() / 3) / 2); //use at least indices / 2 threads
+        } else {
+            tmpMaxThreads = std::thread::hardware_concurrency();
+        }
+    } else { //if it was not possible use at least one extra thread
+        tmpMaxThreads = 2;
     }
     const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
     std::cout << "Using threads: " << maxThreads << std::endl; ///DEV
 
     //init the outputlist
-    std::vector< std::vector<float> > outputList;
-    for (unsigned int i = 0; i < maxThreads; i++) {
+    std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
+    for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
         outputList.push_back(std::vector<float>());
     }
 
     { //DFT
-        std::vector<unsigned int> bounds;
-        calcPartSize(bounds, (dataList.size() / 3), maxThreads); //change the vector
+        std::vector<unsigned int> boundsList; //init the bounds vector
+        calcPartSize(boundsList, (dataList.size() / 3), maxThreads); //save the bounds into boundsList
 
-        for(std::vector<unsigned int>::iterator it = bounds.begin(); it != bounds.end(); ++it) { ///DEV shows bounds
-            std::cout << *it << std::endl;
-        }
-
-        std::thread *threads = new std::thread[maxThreads - 1];
+        std::thread *threads = new std::thread[maxThreads - 1]; //init the threads
         time_t start, end; ///DEV
         time(&start); ///DEV
-        //Lauch maxThreads-1 threads
-        for (unsigned int i = 1; i < maxThreads; ++i) {
-            threads[i - 1] = std::thread(DFT, std::ref(dataList), bounds[i], bounds[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
+
+        for (unsigned int i = 1; i < maxThreads; ++i) { //launch maxThreads - 1 threads
+            threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
         }
+        std::thread progressT = std::thread(progress, std::ref(outputList), (dataList.size() / 3)); //show progress thread
 
-        //Use the main thread to do part of the work !!!
-        DFT(dataList, bounds[0], bounds[1], outputList[0]);
-
-        //Join maxThreads-1 threads
-        for (unsigned int i = 0; i < maxThreads - 1; ++i) {
+        DFT(dataList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
+        for (unsigned int i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
         }
+        progressT.join(); //join progress thread
+
         time(&end); ///DEV
         std::cout << difftime(end, start) << std::endl; ///DEV
     } //end - DFT
 
-    { //save DFT to file
-        std::ofstream outputfile; ///DEV
-        outputfile.open("data/DFToutput.txt", std::ios::out | std::ios::trunc); ///DEV //ios::trunc just for better viewing (is default)
-
-        std::vector<float> tempSave;
-        for(auto curVec : outputList) {
-            for(auto curValue : curVec) {
-                tempSave.push_back(curValue);
-                if (tempSave.size() == 6) {
-                    outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ")\t"; ///DEV
-                    outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t"; ///DEV
-                    outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl; ///DEV
-                    tempSave.clear();
-                }
-            }
-        }
-        outputfile.close();
-    }
+    saveToFile(std::ref(outputList), "data/DFToutput.txt"); //save to file
     return 0;
 }
 
-void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, std::vector<float>& outputList) {
-    const unsigned int M = (dataList.size() / 3);
-    float tempRe = 0;
-    float tempIm = 0;
+void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, std::vector<float>& threadOutputList) {
+    const unsigned int M = (dataList.size() / 3); //
+    float tempRe = 0; //real part
+    float tempIm = 0; //imaginary part
     const float* curValue = NULL;
     const unsigned int N = 3; // number of columns
 
@@ -135,21 +109,56 @@ void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, st
     M = :    ||  ::  |  ::  |  ::  ||
     M = M-1  || xM-1 | yM-1 | zM-1 ||
     */
-    for (unsigned int m = start; m < ends; m++) { //row
+    for (unsigned int m = start; m < ends; m++) { //row; calculate only from start to end, which will make that every thread calc nearly the same
         for (unsigned int n = 0; n < N; n++) { //column
             tempRe = 0;
             tempIm = 0;
             for (unsigned int k = 0; (k < M); k++) { //sum of all row
                 for (unsigned int j = 0; (j < N); j++) { //sum of all column at the current row
                     curValue = &dataList[k * 3 + j];
-                    tempRe += *curValue * ( std::cos( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) );
-                    tempIm += *curValue * ( std::sin( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) );
+                    tempRe += *curValue * ( std::cos( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
+                    tempIm += *curValue * ( std::sin( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
                 }
             }
             //std::cout << std::setprecision(32) << tempRe << "  --  " << tempIm << std::endl;
-            outputList.push_back(tempRe);
-            outputList.push_back(tempIm);
+            threadOutputList.push_back(tempRe); //save the real part into the threadList vector
+            threadOutputList.push_back(tempIm); //save the imaginary part into the threadList vector
         }
+    }
+}
+
+const void saveToFile(const std::vector< std::vector<float> >& outputList, std::string DFToutputPath) {
+    std::ofstream outputfile; ///DEV
+    outputfile.open(DFToutputPath, std::ios::out | std::ios::trunc); //ios::trunc just for better viewing (is default)
+
+    std::vector<float> tempSave;
+    for(auto threadList : outputList) { //loop through all thread lists
+        for(auto curValue : threadList) { //loop through all numbers of the thread list
+            tempSave.push_back(curValue); //save temporary all numbers for one point before writing into file
+            if (tempSave.size() == 6) { //write into file
+                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t"; ///DEV
+                outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl; ///DEV
+                tempSave.clear();
+            }
+        }
+    }
+    outputfile.close();
+}
+
+const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue) {
+    unsigned int curRawProgress = 0;
+    unsigned int tmpCurRawProgress = 0;
+    while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
+        tmpCurRawProgress = 0;
+        for(auto curVec : outputList) {
+            tmpCurRawProgress += curVec.size();
+        }
+        if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
+            curRawProgress = tmpCurRawProgress;
+            std::cout << curRawProgress << " / " << finishValue << std::endl;
+        }
+        sleep(1); //in seconds
     }
 }
 
@@ -176,15 +185,15 @@ void readInputFile(std::string path, std::string outputPath, std::vector<float>&
     outputfile.close();
 }
 
-void calcPartSize(std::vector<unsigned int>& bounds, const unsigned int numbers, const unsigned int& cores) {
+void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
     unsigned int partsize = numbers / cores;
 
-    bounds.push_back(0);
+    boundsList.push_back(0);
     for (unsigned int i = 1; i <= cores; i++) {
         if (i <= (numbers % cores)) {
-            bounds.push_back(bounds[i - 1] + partsize + 1);
+            boundsList.push_back(boundsList[i - 1] + partsize + 1);
         } else {
-            bounds.push_back(bounds[i - 1] + partsize);
+            boundsList.push_back(boundsList[i - 1] + partsize);
         }
     }
 }

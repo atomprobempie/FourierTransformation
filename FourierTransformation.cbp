@@ -15,6 +15,9 @@
 					<Add option="-std=c++14" />
 					<Add option="-g" />
 				</Compiler>
+				<Linker>
+					<Add library="pthread" />
+				</Linker>
 			</Target>
 			<Target title="Release">
 				<Option output="bin/Release/FourierTransformation" prefix_auto="1" extension_auto="1" />
@@ -26,12 +29,13 @@
 					<Add option="-std=c++14" />
 				</Compiler>
 				<Linker>
-					<Add option="-s" />
+					<Add library="pthread" />
 				</Linker>
 			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
+			<Add option="-std=c++14" />
 			<Add option="-fexceptions" />
 		</Compiler>
 		<Unit filename="src/main.cpp" />
