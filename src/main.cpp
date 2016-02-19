@@ -1,3 +1,12 @@
+/* TODO:
+    catch file exceptions
+    use "work" as import file
+    use "export" as export file
+
+    Future:
+        custom files
+*/
+
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -33,27 +42,27 @@ int main() {
     //std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
     //save source data here if its needed
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
-/*
-    //test values
-    dataList.push_back(6.300058841705322265625);
-    dataList.push_back(11.27175426483154296875);
-    dataList.push_back(9.9945583343505859375);
-    dataList.push_back(6.81645107269287109375);
-    dataList.push_back(10.869720458984375);
-    dataList.push_back(9.98496723175048828125);
-    dataList.push_back(6.258909702301025390625);
-    dataList.push_back(11.07165622711181640625);
-    dataList.push_back(9.96583461761474609375);
-    dataList.push_back(6.63667011260986328125);
-    dataList.push_back(11.12175464630126953125);
-    dataList.push_back(9.89614772796630859375);
+    /*
+        //test values
+        dataList.push_back(6.300058841705322265625);
+        dataList.push_back(11.27175426483154296875);
+        dataList.push_back(9.9945583343505859375);
+        dataList.push_back(6.81645107269287109375);
+        dataList.push_back(10.869720458984375);
+        dataList.push_back(9.98496723175048828125);
+        dataList.push_back(6.258909702301025390625);
+        dataList.push_back(11.07165622711181640625);
+        dataList.push_back(9.96583461761474609375);
+        dataList.push_back(6.63667011260986328125);
+        dataList.push_back(11.12175464630126953125);
+        dataList.push_back(9.89614772796630859375);
 
-    /* results:
-    (110.1884918212890625, 0)	(-16.076107025146484375, -3.8913784027099609375)	(-16.076107025146484375, 3.8913784027099609375)
-    (0.2699718475341796875, -0.016567230224609375)	(0.2219267189502716064453125, -0.40980243682861328125)	(-0.3684501945972442626953125, -0.1129741668701171875)
-    (-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
-    (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
-    */
+        /* results:
+        (110.1884918212890625, 0)	(-16.076107025146484375, -3.8913784027099609375)	(-16.076107025146484375, 3.8913784027099609375)
+        (0.2699718475341796875, -0.016567230224609375)	(0.2219267189502716064453125, -0.40980243682861328125)	(-0.3684501945972442626953125, -0.1129741668701171875)
+        (-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
+        (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
+        */
 
     //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
@@ -186,15 +195,15 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
             switch(showBarTheme) { //show progressbar
-                case 0:
-                    std::cout << "\r" << curRawProgress << " / " << finishValue;
-                    break;
-                case 1:
-                    std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
-                    break;
-                default:
-                    std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << "  -  " << curRawProgress << " / " << finishValue;
-                    break;
+            case 0:
+                std::cout << "\r" << curRawProgress << " / " << finishValue;
+                break;
+            case 1:
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
+                break;
+            default:
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << "  -  " << curRawProgress << " / " << finishValue;
+                break;
             }
         }
         sleep(updateTime); //in seconds
