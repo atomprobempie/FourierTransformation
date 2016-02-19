@@ -15,15 +15,18 @@
 
 int main() {
     //functions
-    void readInputFile(std::string path, std::string outputPath, std::vector<float>& dataList);
-    void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, std::vector<float>& threadOutputList);
+    void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList);
+    void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
     void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
-    const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue);
-    const void saveToFile(const std::vector< std::vector<float> >& outputList, std::string DFToutputPath);
+    const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
+    const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
+    std::cout << "START: import data" << std::endl; //status msg
+    std::cout << "START: write source data to file" << std::endl; //status msg
     readInputFile("data/test.pos", "data/output.txt", std::ref(dataList)); //read data from file and save it into dataList
-
+    std::cout << "DONE: import data" << std::endl; //status msg
+    std::cout << "DONE: write source data to file" << std::endl; //status msg
 /*
     //test values
     dataList.push_back(6.300058841705322265625);
@@ -46,7 +49,7 @@ int main() {
     (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
     */
 
-    //set the max threads which can be used
+    //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
     if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
         if (tmpMaxThreads > ((dataList.size() / 3) / 2))  { //prevent of using more threads as indices
@@ -58,7 +61,7 @@ int main() {
         tmpMaxThreads = 2;
     }
     const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
-    std::cout << "Using threads: " << maxThreads << std::endl; ///DEV
+    std::cout << "NOTE: " << maxThreads << " threads will be used." << std::endl; //status msg
 
     //init the outputlist
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
@@ -70,15 +73,18 @@ int main() {
         std::vector<unsigned int> boundsList; //init the bounds vector
         calcPartSize(boundsList, (dataList.size() / 3), maxThreads); //save the bounds into boundsList
 
-        std::thread *threads = new std::thread[maxThreads - 1]; //init the threads
+        std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
         time_t start, end; ///DEV
         time(&start); ///DEV
 
-        for (unsigned int i = 1; i < maxThreads; ++i) { //launch maxThreads - 1 threads
+        //configure threads
+        for (unsigned int i = 1; i < maxThreads; ++i) {
             threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
         }
-        std::thread progressT = std::thread(progress, std::ref(outputList), (dataList.size() / 3)); //show progress thread
+        std::thread progressT = std::thread(progress, std::ref(outputList), (dataList.size() / 3), 2, 2); //progress thread
 
+        std::cout << "Start: calculating DFT" << std::endl; //status msg
+        //start threads
         DFT(dataList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         for (unsigned int i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
@@ -86,14 +92,15 @@ int main() {
         progressT.join(); //join progress thread
 
         time(&end); ///DEV
-        std::cout << difftime(end, start) << std::endl; ///DEV
+        std::cout << "DONE: calculating DFT" << std::endl; //status msg
+        std::cout << "NOTE: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
     } //end - DFT
 
     saveToFile(std::ref(outputList), "data/DFToutput.txt"); //save to file
     return 0;
 }
 
-void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, std::vector<float>& threadOutputList) {
+void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
     const unsigned int M = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
@@ -127,7 +134,7 @@ void DFT(std::vector<float>& dataList, unsigned int start, unsigned int ends, st
     }
 }
 
-const void saveToFile(const std::vector< std::vector<float> >& outputList, std::string DFToutputPath) {
+const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
     std::ofstream outputfile; ///DEV
     outputfile.open(DFToutputPath, std::ios::out | std::ios::trunc); //ios::trunc just for better viewing (is default)
 
@@ -146,7 +153,10 @@ const void saveToFile(const std::vector< std::vector<float> >& outputList, std::
     outputfile.close();
 }
 
-const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue) {
+const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage and absolut
+    //function
+    std::string getProgressBar(const float percent);
+
     unsigned int curRawProgress = 0;
     unsigned int tmpCurRawProgress = 0;
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
@@ -156,13 +166,23 @@ const void progress(const std::vector< std::vector<float> >& outputList, const u
         }
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
-            std::cout << curRawProgress << " / " << finishValue << std::endl;
+            switch(showBarTheme) {
+                case 0:
+                    std::cout << "\r" << curRawProgress << " / " << finishValue;
+                    break;
+                case 1:
+                    std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
+                    break;
+                default:
+                    std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << "  -  " << curRawProgress << " / " << finishValue;
+                    break;
+            }
         }
-        sleep(1); //in seconds
+        sleep(updateTime); //in seconds
     }
 }
 
-void readInputFile(std::string path, std::string outputPath, std::vector<float>& dataList) { ///NOTE: changes dataList
+void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList) { ///NOTE: changes dataList
     std::ifstream file;
     std::ofstream outputfile; ///DEV
     uint32_t number;
@@ -188,12 +208,49 @@ void readInputFile(std::string path, std::string outputPath, std::vector<float>&
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
     unsigned int partsize = numbers / cores;
 
-    boundsList.push_back(0);
+    boundsList.push_back(0); //start bound is 0
     for (unsigned int i = 1; i <= cores; i++) {
-        if (i <= (numbers % cores)) {
+        if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
             boundsList.push_back(boundsList[i - 1] + partsize + 1);
         } else {
             boundsList.push_back(boundsList[i - 1] + partsize);
         }
     }
+}
+
+std::string getProgressBar(const int percent) { //progressbar without numbers after the decimal point
+    std::stringstream progressBar;
+    if ((percent < 0) || (percent > 100)) { //if illegal percent value show a snail ;)
+        return "                  ...  _o**  ...                   ...";
+    }
+    //create the "empty" part of the bar + percent view
+    progressBar.width(53 - (percent + 3) / 2);
+    progressBar.fill(' ');
+    progressBar << percent << "%";
+    std::string secondPart = progressBar.str();
+    //create the "full" part of the bar
+    progressBar.str(std::string());
+    progressBar.width((percent + 3) / 2);
+    progressBar.fill('=');
+    progressBar << " ";
+    progressBar << secondPart; //smelt both parts to one
+    return progressBar.str();
+}
+std::string getProgressBar(const float percent) { //progressbar with numbers after the decimal point
+    std::stringstream progressBar;
+    if ((percent < 0) || (percent > 100)) {
+        return "                  ...  _o**  ...                   ..."; //if illegal percent value show a snail ;)
+    }
+    //create the "empty" part of the bar + percent view
+    progressBar.width(53 - (percent + 3) / 2);
+    progressBar.fill(' ');
+    progressBar << std::setprecision(1) << percent << "%";
+    std::string secondPart = progressBar.str();
+    progressBar.str(std::string());
+    //create the "full" part of the bar
+    progressBar.width((percent + 3) / 2);
+    progressBar.fill('=');
+    progressBar << " ";
+    progressBar << secondPart; //smelt both parts to one
+    return progressBar.str();
 }
