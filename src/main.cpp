@@ -18,7 +18,7 @@ int main() {
     void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList);
     void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
     void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
-    const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
+    const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
     const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
@@ -81,7 +81,7 @@ int main() {
         for (unsigned int i = 1; i < maxThreads; ++i) {
             threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
         }
-        std::thread progressT = std::thread(progress, std::ref(outputList), (dataList.size() / 3), 2, 2); //progress thread
+        std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (dataList.size() / 3), 2, 2); //DFTprogress thread
 
         std::cout << "Start: calculating DFT" << std::endl; //status msg
         //start threads
@@ -89,7 +89,7 @@ int main() {
         for (unsigned int i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
         }
-        progressT.join(); //join progress thread
+        progressT.join(); //join DFTprogress thread
 
         time(&end); ///DEV
         std::cout << "DONE: calculating DFT" << std::endl; //status msg
@@ -153,7 +153,7 @@ const void saveToFile(const std::vector< std::vector<float> >& outputList, const
     outputfile.close();
 }
 
-const void progress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage and absolut
+const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage and absolut
     //function
     std::string getProgressBar(const float percent);
 
