@@ -96,7 +96,7 @@ int main() {
         for (unsigned int i = 1; i < maxThreads; ++i) {
             threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
         }
-        std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (dataList.size() / 3), 2, 2); //DFTprogress thread
+        std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (dataList.size() / 3), 2, 3); //DFTprogress thread
 
         std::cout << "Start: calculating DFT" << std::endl; //status msg
         //start threads
@@ -181,9 +181,12 @@ void DFT(const std::vector<float>& dataList, const unsigned int start, const uns
     }
 }
 
-const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage and absolut
+const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage + absolut; 3 = percentage + absolut + remaining time
     //function
     std::string getProgressBar(const float percent);
+
+    time_t start, end; ///DEV
+    time(&start); ///DEV
 
     unsigned int curRawProgress = 0;
     unsigned int tmpCurRawProgress = 0;
@@ -201,8 +204,13 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
             case 1:
                 std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
                 break;
+            case 3: ///DEV
+                time(&end); ///DEV
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
+                std::cout << std::fixed << " | ~" << (int) ((difftime(end, start) / curRawProgress) * (finishValue - curRawProgress) / 60) << "m"; ///DEV
+                break; ///DEV
             default:
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << "  -  " << curRawProgress << " / " << finishValue;
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
                 break;
             }
         }
@@ -235,7 +243,7 @@ std::string getProgressBar(const float percent) { //progressbar with numbers aft
         return "                  ...  _o**  ...                   ..."; //if illegal percent value show a snail ;)
     }
     //create the "empty" part of the bar + percent view
-    progressBar.width(53 - (percent + 3) / 2);
+    progressBar.width(54 - (percent) / 2 - ((percent == 100)? 1 : 0));
     progressBar.fill(' ');
     progressBar << std::fixed << std::setprecision(((percent != 100) ? 1 : 0)) << percent << "%";
     std::string secondPart = progressBar.str();
