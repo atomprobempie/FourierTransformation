@@ -135,9 +135,17 @@ void DFT(const std::vector<float>& dataList, const unsigned int start, const uns
 }
 
 const void saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
+    std::string getProgressBar(const float percent);
+
     std::ofstream outputfile; ///DEV
     outputfile.open(DFToutputPath, std::ios::out | std::ios::trunc); //ios::trunc just for better viewing (is default)
 
+    unsigned int finishValue = 0;
+    for(auto threadList : outputList) { //loop through all thread lists
+        finishValue += (threadList.size() / 6);
+    }
+
+    unsigned int curRawProgress = 0;
     std::vector<float> tempSave;
     for(auto threadList : outputList) { //loop through all thread lists
         for(auto curValue : threadList) { //loop through all numbers of the thread list
@@ -147,6 +155,8 @@ const void saveToFile(const std::vector< std::vector<float> >& outputList, const
                 outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t"; ///DEV
                 outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl; ///DEV
                 tempSave.clear();
+                curRawProgress++;
+                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
             }
         }
     }
@@ -162,7 +172,7 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
         tmpCurRawProgress = 0;
         for(auto curVec : outputList) {
-            tmpCurRawProgress += curVec.size();
+            tmpCurRawProgress += (curVec.size() / 3);
         }
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
@@ -180,6 +190,7 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
         }
         sleep(updateTime); //in seconds
     }
+    std::cout << std::endl;
 }
 
 void readInputFile(const std::string path, const std::string outputPath, std::vector<float>& dataList) { ///NOTE: changes dataList
@@ -244,7 +255,7 @@ std::string getProgressBar(const float percent) { //progressbar with numbers aft
     //create the "empty" part of the bar + percent view
     progressBar.width(53 - (percent + 3) / 2);
     progressBar.fill(' ');
-    progressBar << std::setprecision(1) << percent << "%";
+    progressBar << std::fixed << std::setprecision(((percent != 100) ? 1 : 0)) << percent << "%";
     std::string secondPart = progressBar.str();
     progressBar.str(std::string());
     //create the "full" part of the bar
