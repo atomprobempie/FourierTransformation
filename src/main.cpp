@@ -1,12 +1,23 @@
 /* TODO:
     use "import" as import file
-
     Future:
         custom files
 */
 
+#if defined __GNUC__
+    #include <sys/stat.h>
+    #include <unistd.h>
+#elif defined _MSC_VER
+    #include <direct.h>
+    #include <Windows.h>
+    #include <direct.h>
+    #include <intrin.h>
+    #include <io.h>
+#endif
+
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string.h>
 
 #include <iomanip>
@@ -14,27 +25,30 @@
 #include <thread>
 
 #include <time.h>
-#include <unistd.h>
 
-#define _USE_MATH_DEFINES
+#if defined __GNUC__
+    #define _USE_MATH_DEFINES
+#elif defined _MSC_VER
+    const double M_PI = 3.141592653589793238462643383279;
+#endif
+
 #include <cmath>
 #include <vector>
 
-int main() {
-    //functions
     bool readInputFile(const std::string path, std::vector<float>& dataList);
     void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
     void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
-    const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
-    const bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
+    void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
+    bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
     const std::string getProgressBar(float percent);
+    const std::string getCurrentTime();
 
-
+int main() {
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
     std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
     if (!readInputFile("data/test.pos", std::ref(dataList))) { //read data from file and save it into dataList
-        std::cout << "CLOSED"; //status msg
+        std::cout << "CLOSED" << std::endl; //status msg
         return 0;
     }
     std::cout << "DONE: import data" << std::endl; //status msg
@@ -114,7 +128,7 @@ int main() {
 
     std::cout << "START: saving DFT data" << std::endl; //status msg
     if (!saveToFile(std::ref(outputList), "export/")) { //save DFT results to file
-        std::cout << "CLOSED"; //status msg
+        std::cout << "CLOSED" << std::endl; //status msg
         return 0;
     }
     std::cout << "DONE: saving DFT data" << std::endl; //status msg
@@ -138,7 +152,11 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
             return false;
         }
         //convert little endian to big endian because the input is 32bit float big endian
-        number = (__builtin_bswap32(number));
+        #if defined __GNUC__
+            number = (__builtin_bswap32(number));
+        #elif defined _MSC_VER
+            number = (_byteswap_ulong(number));
+        #endif
         char* pcUnsInt = (char*)&number;
         char* pcFloatNum = (char*)&floatnum;
         memcpy(pcFloatNum, pcUnsInt, sizeof(number));
@@ -198,17 +216,18 @@ void DFT(const std::vector<float>& dataList, const unsigned int start, const uns
     }
 }
 
-const void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage + absolut; 3 = percentage + absolut + remaining time
-    //function
-    const std::string getProgressBar(const float percent);
-
+void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage + absolut; 3 = percentage + absolut + remaining time
     time_t start, ends;
     time(&start);
 
     unsigned int curRawProgress = 0;
     unsigned int tmpCurRawProgress = 0;
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
-        sleep(updateTime); //in seconds
+        #if defined __GNUC__
+            sleep(updateTime); //in seconds
+        #elif defined _MSC_VER
+            Sleep(updateTime * 1000); //in seconds
+        #endif
         tmpCurRawProgress = 0;
         for(auto curVec : outputList) {
             tmpCurRawProgress += (curVec.size() / 6);
@@ -239,30 +258,35 @@ const void DFTprogress(const std::vector< std::vector<float> >& outputList, cons
 const std::string getProgressBar(const float percent) { //progressbar with numbers after the decimal point
     std::stringstream progressBar;
     if ((percent < 0) || (percent > 100)) {
-        return "                  ...  _o**  ...                   ..."; //if illegal percent value show a snail ;)
+        return "                    ...  _o**  ...                   ..."; //if illegal percent value show a snail ;)
     }
     //create the "empty" part of the bar + percent view
-    progressBar.width(54 - (percent) / 2 - ((percent == 100)? 1 : 0));
+    progressBar.width((110 - (percent)) / 2 - ((percent == 100) ? 1 : 0) - ( ((((int) percent) == percent) && ((int) percent % 2 != 1) ? 1 : 0)));
     progressBar.fill(' ');
     progressBar << std::fixed << std::setprecision(((percent != 100) ? 1 : 0)) << percent << "%" << ((percent != 100) ? "" : " "); //last output fixes a doubled '%' at 100% cause of float output before
     std::string secondPart = progressBar.str();
     progressBar.str(std::string());
     //create the "full" part of the bar
-    progressBar.width((percent + 3) / 2);
+    progressBar.width((percent + 4) / 2);
     progressBar.fill('=');
     progressBar << " ";
     progressBar << secondPart; //smelt both parts to one
     return progressBar.str();
 }
 
-const bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
-    const std::string getCurrentTime();
-    std::string getProgressBar(const float percent);
-
+bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
     std::string DFToutputFile;
-    if(access(DFToutputPath.c_str(), F_OK ) == -1 ) { //if file is not existing
+    #if defined __GNUC__
+        if(access(DFToutputPath.c_str(), F_OK ) == -1 ) { //if file is not existing
+    #elif defined _MSC_VER
+        if(access(DFToutputPath.c_str(), 0) == -1) { //if file is not existing
+    #endif
         std::cout << "NOTE: creating export file" << std::endl; //status msg
-        mkdir(DFToutputPath.c_str());
+        #if defined _linux
+            mkdir(DFToutputPath.c_str(), 0);
+        #elif defined _WIN32 || _WIN64
+            mkdir(DFToutputPath.c_str());
+        #endif
     }
     DFToutputFile = DFToutputPath + "DFToutput_" + getCurrentTime() + ".txt"; //filename with current time
 
@@ -287,8 +311,8 @@ const bool saveToFile(const std::vector< std::vector<float> >& outputList, const
         for(auto curValue : threadList) { //loop through all numbers of the thread list
             tempSave.push_back(curValue); //save temporary all numbers for one point before writing into file
             if (tempSave.size() == 6) { //write into file
-                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ")\t";
-                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ")\t";
+                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ") ";
+                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ") ";
                 outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl;
                 tempSave.clear();
                 curRawProgress++;
