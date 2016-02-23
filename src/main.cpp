@@ -31,7 +31,6 @@
 #elif defined _MSC_VER
     const double M_PI = 3.141592653589793238462643383279;
 #endif
-
 #include <cmath>
 #include <vector>
 
@@ -44,10 +43,15 @@
     const std::string getCurrentTime();
 
 int main() {
+    std::cout << "Direct Fourier Transformation of 3D points. - under development" << std::endl << std::endl;
+    std::cout << "WARNING: This program will try to use all cores! Your system should run stable though." << std::endl;
+    std::cout << "The source data has to be named as \"source.pos\" and placed in \"<program file>/import\"" << std::endl;
+    std::cout << std::endl;
+
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
     std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
-    if (!readInputFile("data/test.pos", std::ref(dataList))) { //read data from file and save it into dataList
+    if (!readInputFile("import/source.pos", std::ref(dataList))) { //read data from file and save it into dataList
         std::cout << "CLOSED" << std::endl; //status msg
         return 0;
     }
@@ -104,8 +108,8 @@ int main() {
         calcPartSize(boundsList, (dataList.size() / 3), maxThreads); //save the bounds into boundsList
 
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
-        time_t start, end; ///DEV
-        time(&start); ///DEV
+        time_t start, end;
+        time(&start);
 
         //configure threads
         for (unsigned int i = 1; i < maxThreads; ++i) {
@@ -121,7 +125,7 @@ int main() {
         }
         progressT.join(); //join DFTprogress thread
 
-        time(&end); ///DEV
+        time(&end);
         std::cout << "DONE: calculating DFT" << std::endl; //status msg
         std::cout << "NOTE: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
     } //end - DFT
@@ -132,6 +136,8 @@ int main() {
         return 0;
     }
     std::cout << "DONE: saving DFT data" << std::endl; //status msg
+    std::cout << "Press any key to close the terminal.";
+    getchar();
     return 0;
 }
 
