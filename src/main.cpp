@@ -10,7 +10,6 @@
 #elif defined _MSC_VER
     #include <direct.h>
     #include <Windows.h>
-    #include <direct.h>
     #include <intrin.h>
     #include <io.h>
 #endif
@@ -45,7 +44,7 @@
 int main() {
     std::cout << "Direct Fourier Transformation of 3D points. - under development" << std::endl << std::endl;
     std::cout << "WARNING: This program will try to use all cores! Your system should run stable though." << std::endl;
-    std::cout << "The source data has to be named as \"source.pos\" and placed in \"<program file>/import\"" << std::endl;
+    std::cout << "The source data has to be named as \"source.pos\" and placed in \"<DFT program file>/import\"" << std::endl;
     std::cout << std::endl;
 
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
