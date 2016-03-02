@@ -1,7 +1,7 @@
-/data/*
+/import/*
+/export/*
 /bin/*
 *.exe
 /obj/*
 /FourierTransformation.depend
 /FourierTransformation.layout
-/export/
