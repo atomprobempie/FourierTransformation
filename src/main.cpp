@@ -1,5 +1,4 @@
 /* TODO:
-    handle different partitions under windows with absolut paths
     access vor MVS support
     documentation
     -help support
@@ -88,6 +87,9 @@ int main(int argc, char* argv[]) {
         correctDirPath(std::ref(exportPath));
 
         //check paths
+        std::cout << "Source file: " << sourcePath << std::endl;
+        std::cout << "Export dir:  " << exportPath << std::endl;
+        std::cout << "START: checking given paths" << std::endl; //status msg
         std::string tmpmsg = checkFileAccess(sourcePath, 1);
         if (tmpmsg.compare("") != 0) { //check source file path
             std::cout << "ERROR: source file is " << tmpmsg << std::endl; //status msg
@@ -115,7 +117,7 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
             std::cout << "DONE: Creating export directory" << std::endl; //status msg
-        } else { //is existing but has another error
+        } else { //is existing
             tmpmsg = checkFileAccess(exportPath, 2);
             if (tmpmsg.compare("") != 0) {
                 std::cout << "ERROR: export path is " << tmpmsg << std::endl; //status msg
@@ -124,6 +126,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    std::cout << "DONE: checking given paths" << std::endl; //status msg
 
     //import source
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
@@ -309,7 +312,7 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
     }
 
     //check write
-    if (arg & 1) {
+    if (arg & 2) {
         accres = access(path.c_str(), W_OK);
         if (accres != 0) {
             if (errno == EACCES) {
@@ -326,15 +329,19 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
 
 const bool createDir(std::string path) {
     std::string curPath = path;
-    size_t pos = path.find("/");;
+    size_t pos = path.find("/");
     curPath = path.substr(0, pos + 1);
+    if (curPath[1] == ':') { //absolut path
+        pos = path.find("/", pos + 1);
+        curPath = path.substr(0, pos + 1);
+    }
     while (pos != std::string::npos) {
         #if defined _linux
         if (mkdir(curPath.c_str(), 0) != 0) {
         #elif defined _WIN32 || _WIN64
-        if (mkdir(curPath.c_str()) != 0) {
+        if (mkdir(curPath.c_str()) != 0) { //try to create all directories
         #endif
-            if (errno != EEXIST) {
+            if (errno != EEXIST) { //if theres an error different as the already "existing" error
                 return false;
             }
         }
@@ -515,7 +522,7 @@ bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::
         return false;
     }
 
-    std::cout << "Note: saving DFT results to .../" << DFToutputFile << std::endl;
+    std::cout << "Note: saving DFT results to " << DFToutputFile << std::endl;
 
     unsigned int finishValue = 0;
     for(auto threadList : outputList) { //loop through all thread lists
