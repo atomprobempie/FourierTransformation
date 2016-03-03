@@ -1,5 +1,4 @@
 /* TODO:
-    access vor MVS support
     documentation
     -help support
 */
@@ -8,12 +7,17 @@
     #include <sys/stat.h>
     #include <unistd.h>
 #elif defined _MSC_VER
-    #include <direct.h>
     #include <Windows.h>
     #include <intrin.h>
-    #include <io.h>
 #endif
 
+#include <io.h>
+#if defined _MSC_VER
+    int F_OK = 00;
+    int W_OK = 02;
+    int R_OK = 04;
+#endif // defined
+#include <direct.h>
 #include <errno.h>
 #include <iostream>
 #include <fstream>
@@ -97,7 +101,7 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        if ((access(exportPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of export path file
+        if ((_access_s(exportPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of export path file
             std::cout << "Note: export path is not existing." << std::endl;
             if (!forceCreateExpPath) { //no forcing creation of export path
                 std::cout << "Should the file created? [y/n]" << std::endl;
@@ -292,7 +296,7 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
     int accres;
 
     //check exist
-    accres = access(path.c_str(), F_OK);
+    accres = _access_s(path.c_str(), F_OK);
     if (accres != 0) {
         if (errno == ENOENT) {
             return "not existing.";
@@ -305,7 +309,7 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
 
     //check read
     if (arg & 1) {
-        accres = access(path.c_str(), R_OK);
+        accres = _access_s(path.c_str(), R_OK);
         if (accres != 0) {
             return "not readable (access denied).";
         }
@@ -313,7 +317,7 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
 
     //check write
     if (arg & 2) {
-        accres = access(path.c_str(), W_OK);
+        accres = _access_s(path.c_str(), W_OK);
         if (accres != 0) {
             if (errno == EACCES) {
                 return "not writable (access denied).";
@@ -337,9 +341,9 @@ const bool createDir(std::string path) {
     }
     while (pos != std::string::npos) {
         #if defined _linux
-        if (mkdir(curPath.c_str(), 0) != 0) {
+        if (mkdir(curPath.c_str(), S_IRWXU) != 0) {
         #elif defined _WIN32 || _WIN64
-        if (mkdir(curPath.c_str()) != 0) { //try to create all directories
+        if (_mkdir(curPath.c_str()) != 0) { //try to create all directories
         #endif
             if (errno != EEXIST) { //if theres an error different as the already "existing" error
                 return false;
@@ -365,7 +369,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
         return false;
     }
     inputFile.seekg(0, inputFile.end);
-    unsigned int finishValue = (inputFile.tellg() / 4); //4 bytes are 32 bit
+    std::streamoff finishValue = (inputFile.tellg() / 4); //4 bytes are 32 bit
     inputFile.seekg(0, inputFile.beg);
     if (finishValue % 4 != 0) {
         std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
@@ -505,7 +509,7 @@ const std::string getCurrentTime() {
     time_t     now = time(0);
     struct tm  tstruct;
     char       buf[25];
-    tstruct = *localtime(&now);
+    localtime_s(&tstruct, &now);
     strftime(buf, sizeof(buf), "%Y_%m_%d-%H_%M_%S", &tstruct);
     return buf;
 }
