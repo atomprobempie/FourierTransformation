@@ -1,5 +1,4 @@
 /* TODO:
-    progressbar for import reading
     handle different partitions under windows with absolut paths
     access vor MVS support
     documentation
@@ -36,6 +35,7 @@
 #include <iomanip>
 #include <stdint.h>
 
+void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
 void correctDirPath(std::string& path);
 void correctFilePath(std::string& path);
@@ -51,9 +51,11 @@ bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::
 
 
 int main(int argc, char* argv[]) {
-    std::cout << "Direct Fourier Transformation of 3D points. - under development" << std::endl << std::endl;
-    std::cout << "Start the program with the argument -help for more information about starting with arguments." << std::endl;
+    std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "Direct Fourier Transformation of 3D points. - development version" << std::endl << std::endl;
+    std::cout << "Start the program with the argument ?help for more information about starting with arguments." << std::endl;
     std::cout << "WARNING: This program will try to use all cores! Your system should run stable though." << std::endl;
+    std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << std::endl;
 
     //get paths
@@ -94,9 +96,9 @@ int main(int argc, char* argv[]) {
         }
 
         if ((access(exportPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of export path file
-            std::cout << "NOTE: export path is not existing." << std::endl;
+            std::cout << "Note: export path is not existing." << std::endl;
             if (!forceCreateExpPath) { //no forcing creation of export path
-                std::cout << "Should file created? [y/n]" << std::endl;
+                std::cout << "Should the file created? [y/n]" << std::endl;
                 char tmpchar;
                 std::cin >> tmpchar;
                 std::cin.get();
@@ -126,7 +128,6 @@ int main(int argc, char* argv[]) {
     //import source
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
-    std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
     if (!readInputFile(sourcePath, std::ref(dataList))) { //read data from file and save it into dataList
         std::cout << "CLOSED" << std::endl; //status msg
         return 1;
@@ -171,7 +172,7 @@ int main(int argc, char* argv[]) {
         tmpMaxThreads = 2;
     }
     const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
-    std::cout << "NOTE: " << maxThreads << " threads will be used." << std::endl; //status msg
+    std::cout << "Note: " << maxThreads << " threads will be used." << std::endl; //status msg
 
     //init the outputlist
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
@@ -204,7 +205,7 @@ int main(int argc, char* argv[]) {
 
         time(&end);
         std::cout << "DONE: calculating DFT" << std::endl; //status msg
-        std::cout << "NOTE: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
+        std::cout << "Note: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
     } //end - DFT
 
     std::cout << "START: saving DFT data" << std::endl; //status msg
@@ -220,8 +221,12 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+void getHelp() {
+
+}
+
 void getPaths(std::string &sourcePath, std::string &exportPath) {
-    std::cout << "NOTE: no arguments given" << std::endl; //status msg
+    std::cout << "Note: no arguments given" << std::endl; //status msg
     std::cout << "\tYou can use absolute paths or a relative path based on the execution file" << std::endl;
     std::cout << "\tUse /" << std::endl;
     std::cout << "Source file: ";
@@ -352,6 +357,12 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
         std::cout << "\timport data is " << tmpmsg << std::endl; //status msg
         return false;
     }
+    inputFile.seekg(0, inputFile.end);
+    unsigned int finishValue = (inputFile.tellg() / 4); //4 bytes are 32 bit
+    inputFile.seekg(0, inputFile.beg);
+    if (finishValue % 4 != 0) {
+        std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
+    }
     for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
         //convert little endian to big endian because the input is 32bit float big endian
         #if defined __GNUC__
@@ -366,7 +377,9 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
         if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
             dataList.push_back(floatnum);
         }
+        std::cout << "\r" << getProgressBar(100. / finishValue * (i + 1)); //show progress
     }
+    std::cout << std::endl;
     if (!inputFile.good() && !inputFile.eof()) {
         std::cout << "ERROR: import data" << std::endl; //status msg
         std::cout << "\tError while reading the source file." << std::endl; //status msg
@@ -502,7 +515,7 @@ bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::
         return false;
     }
 
-    std::cout << "NOTE: saving DFT results to .../" << DFToutputFile << std::endl;
+    std::cout << "Note: saving DFT results to .../" << DFToutputFile << std::endl;
 
     unsigned int finishValue = 0;
     for(auto threadList : outputList) { //loop through all thread lists
