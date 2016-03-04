@@ -1,6 +1,9 @@
-/* TODO:
-    documentation
-    -help support
+/*
+    Developer:
+    Thanks to:
+
+
+    License:
 */
 
 #if defined __GNUC__
@@ -16,7 +19,7 @@
     int F_OK = 00;
     int W_OK = 02;
     int R_OK = 04;
-#endif // defined
+#endif
 #include <direct.h>
 #include <errno.h>
 #include <iostream>
@@ -56,7 +59,8 @@ bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::
 int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << "Direct Fourier Transformation of 3D points. - development version" << std::endl << std::endl;
-    std::cout << "Start the program with the argument ?help for more information about starting with arguments." << std::endl;
+    std::cout << "Use ?help as source file for more information and starting with arguments." << std::endl;
+    std::cout << "A wider terminal is recommend (around 100), change it in the terminal settings." << std::endl;
     std::cout << "WARNING: This program will try to use all cores! Your system should run stable though." << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << std::endl;
@@ -71,19 +75,27 @@ int main(int argc, char* argv[]) {
             getPaths(std::ref(sourcePath), std::ref(exportPath)); //ask for import and export path
         } else {
             sourcePath = argv[1]; //source path is the first argument
+            if (sourcePath == "?help") { //show help
+                getHelp();
+                return 0;
+            }
             if (argc > 2) { //export path is second argument
                 exportPath = argv[2];
-            } else {
+            } else { //no export path given
                 exportPath = "export/";
             }
             if (argc > 3) { //force creating export path is third argument
                 if (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0) { //check if the argument is correct
                     std::cout << "ERROR: wrong third argument" << std::endl; //status msg
-                    std::cout << "CLOSED" << std::endl;
+                    std::cout << "CLOSED" << std::endl; //status msg
                     return -1;
                 }
                 forceCreateExpPath = (strcmp(argv[3], "1") == 0);
             }
+        }
+        if (sourcePath == "?help") { //show help
+            getHelp();
+            return 0;
         }
 
         //correct some mistakes in the paths
@@ -95,37 +107,37 @@ int main(int argc, char* argv[]) {
         std::cout << "Export dir:  " << exportPath << std::endl;
         std::cout << "START: checking given paths" << std::endl; //status msg
         std::string tmpmsg = checkFileAccess(sourcePath, 1);
-        if (tmpmsg.compare("") != 0) { //check source file path
+        if (tmpmsg != "") { //check source file path, if a error is returned
             std::cout << "ERROR: source file is " << tmpmsg << std::endl; //status msg
-            std::cout << "CLOSED" << std::endl;
+            std::cout << "CLOSED" << std::endl; //status msg
             return -1;
         }
 
         if ((_access_s(exportPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of export path file
-            std::cout << "Note: export path is not existing." << std::endl;
+            std::cout << "Note: export path is not existing." << std::endl; //status msg
             if (!forceCreateExpPath) { //no forcing creation of export path
                 std::cout << "Should the file created? [y/n]" << std::endl;
                 char tmpchar;
                 std::cin >> tmpchar;
-                std::cin.get();
+                std::cin.get(); //"eat" the return key
                 if (tmpchar != 'y') {
-                    std::cout << "User canceled." << std::endl;
-                    std::cout << "CLOSED" << std::endl;
+                    std::cout << "User canceled." << std::endl; //status msg
+                    std::cout << "CLOSED" << std::endl; //status msg
                     return 1;
                 }
             }
             std::cout << "START: Creating export directory" << std::endl; //status msg
             if (!createDir(exportPath)) { //create directory
                 std::cout << "ERROR: Creating export directory" << std::endl; //status msg
-                std::cout << "CLOSED" << std::endl;
+                std::cout << "CLOSED" << std::endl; //status msg
                 return -1;
             }
             std::cout << "DONE: Creating export directory" << std::endl; //status msg
         } else { //is existing
-            tmpmsg = checkFileAccess(exportPath, 2);
-            if (tmpmsg.compare("") != 0) {
+            tmpmsg = checkFileAccess(exportPath, 2); //check exist and write access, returns an error reason if an error occurred
+            if (tmpmsg != "") {
                 std::cout << "ERROR: export path is " << tmpmsg << std::endl; //status msg
-                std::cout << "CLOSED" << std::endl;
+                std::cout << "CLOSED" << std::endl; //status msg
                 return -1;
             }
         }
@@ -135,10 +147,13 @@ int main(int argc, char* argv[]) {
     //import source
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
+    std::cout << "\r" << getProgressBar(-2); //show progress snail
     if (!readInputFile(sourcePath, std::ref(dataList))) { //read data from file and save it into dataList
         std::cout << "CLOSED" << std::endl; //status msg
         return 1;
     }
+    std::cout << "\r" << getProgressBar(100); //show progress //progress is 100
+    std::cout << std::endl;
     std::cout << "DONE: import data" << std::endl; //status msg
 
     //std::cout << "START: write source data to file" << std::endl; //status msg
@@ -228,11 +243,41 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-void getHelp() {
-
+void getHelp() { //help and info section
+    std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "Direct Fourier Transformation of 3D points." << std::endl << std::endl;
+    std::cout << "Version: development" << std::endl;
+    std::cout << "Developer: " << std::endl;
+    std::cout << "Thanks to:" << std::endl;
+    std::cout << "  " << std::endl;
+    std::cout << "  " << std::endl;
+    std::cout << "Language: C++" << std::endl;
+    std::cout << "License: " << std::endl;
+    std::cout << std::endl;
+    std::cout << "HELP SECTION" << std::endl;
+    std::cout << "  It gets a source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
+    std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <mass>" << std::endl;
+    std::cout << "  With the Coordinates it will perform a 3D Direct Fourier Transformation (no Fast Fourier)" << std::endl;
+    std::cout << "  The export file will be exported if no path is given to export/" << std::endl;
+    std::cout << std::endl;
+    std::cout << "You can start this program even with arguments:" << std::endl;
+    std::cout << "  <source file> <export file> <force creating>" << std::endl;
+    std::cout << "Source File:" << std::endl;
+    std::cout << "  Given as absolute path or relative path to the executable (use only \"/\" !)"<< std::endl;
+    std::cout << "  Further if a directory has a space in it surround it with \"" << std::endl;
+    std::cout << "Export File:" << std::endl;
+    std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
+    std::cout << "  The file is for humans readable and has this structure:" << std::endl;
+    std::cout << "  (<X real part>, <X imaginary part>) (<Y r. part>, <Y i. part>) (<Z r. part>, <Z i. part>)" << std::endl;
+    std::cout << "Force creating:" << std::endl;
+    std::cout << "  If this option is 1 it will not ask if a missing export path should be created." << std::endl;
+    std::cout << "  It will just do it." << std::endl;
+    std::cout << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ 1" << std::endl;
+    std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
 }
 
-void getPaths(std::string &sourcePath, std::string &exportPath) {
+void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for import and export path
     std::cout << "Note: no arguments given" << std::endl; //status msg
     std::cout << "\tYou can use absolute paths or a relative path based on the execution file" << std::endl;
     std::cout << "\tUse /" << std::endl;
@@ -243,7 +288,7 @@ void getPaths(std::string &sourcePath, std::string &exportPath) {
     std::cout << "\tIf you dont set a export path the export folder in your execution file will be used." << std::endl;
     std::cout << "Export path: ";
     std::getline(std::cin, exportPath);
-    if (exportPath.compare("") == 0) {
+    if (exportPath == "") { //if no export path, use default
         exportPath = "export/";
     }
     std::cout << std::endl;
@@ -251,46 +296,38 @@ void getPaths(std::string &sourcePath, std::string &exportPath) {
 
 void correctDirPath(std::string& path) {
     size_t pos = path.find("\\");
-    while(pos != std::string::npos) {
+    while(pos != std::string::npos) { //replace all \ with /
         path.replace(pos, 1, "/");
         pos = path.find("\\");
     }
     pos = path.find("//");
-    while(pos != std::string::npos) {
+    while(pos != std::string::npos) { //replace // with /
         path.replace(pos, 2, "/");
         pos = path.find("//");
     }
-    if (path[0] == '/') {
+    if (path[0] == '/') { //deletes a / if its the first char
         path.erase(0,1);
     }
-    if (path[path.size() - 1] != '/') {
+    if (path[path.size() - 1] != '/') { //adds a / at the end if its not there
         path += '/';
     }
 }
 
 void correctFilePath(std::string& path) {
     size_t pos = path.find("\\");
-    while(pos != std::string::npos) {
+    while(pos != std::string::npos) { //replace all \ with /
         path.replace(pos, 1, "/");
         pos = path.find("\\");
     }
     pos = path.find("//");
-    while(pos != std::string::npos) {
+    while(pos != std::string::npos) { //replace // with /
         path.replace(pos, 2, "/");
         pos = path.find("//");
     }
-    if (path[0] == '/') {
+    if (path[0] == '/') { //deletes a / if its the first char
         path.erase(0,1);
     }
 }
-
-/*
-    #if defined __GNUC__
-    if(access(DFToutputPath.c_str(), F_OK | W_OK ) == -1 ) { //if file is not existing
-    #elif defined _MSC_VER
-    if(access(DFToutputPath.c_str(), 0) == -1) { //if file is not existing
-    #endif
-*/
 
 const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read access; arg = 2: write access; arg = 3: read & write access
     int accres;
@@ -328,18 +365,18 @@ const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read a
             }
         }
     }
-    return "";
+    return ""; //no error detected
 }
 
 const bool createDir(std::string path) {
     std::string curPath = path;
     size_t pos = path.find("/");
     curPath = path.substr(0, pos + 1);
-    if (curPath[1] == ':') { //absolut path
+    if (curPath[1] == ':') { //if theres an drive letter dont prevent to create it
         pos = path.find("/", pos + 1);
         curPath = path.substr(0, pos + 1);
     }
-    while (pos != std::string::npos) {
+    while (pos != std::string::npos) { //try to create each directory of the path, if its existing try the next, else return error
         #if defined _linux
         if (mkdir(curPath.c_str(), S_IRWXU) != 0) {
         #elif defined _WIN32 || _WIN64
@@ -349,7 +386,7 @@ const bool createDir(std::string path) {
                 return false;
             }
         }
-        pos = path.find("/", pos + 1);
+        pos = path.find("/", pos + 1); //get the next part
         curPath = path.substr(0, pos + 1);
     }
     return true;
@@ -363,7 +400,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
     inputFile.open(path, std::ios::in | std::ios::binary);
 
     std::string tmpmsg = checkFileAccess(path, 1);
-    if (tmpmsg.compare("") != 0) {
+    if (tmpmsg != "") {
         std::cout << "ERROR: import data" << std::endl; //status msg
         std::cout << "\timport data is " << tmpmsg << std::endl; //status msg
         return false;
@@ -371,11 +408,11 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
     inputFile.seekg(0, inputFile.end);
     std::streamoff finishValue = (inputFile.tellg() / 4); //4 bytes are 32 bit
     inputFile.seekg(0, inputFile.beg);
-    if (finishValue % 4 != 0) {
+    if (finishValue % 4 != 0) { //if there are no 4 * X bytes the file can be corrupted because the default input file has 4 number per each point
         std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
     }
     for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
-        //convert little endian to big endian because the input is 32bit float big endian
+        //convert big endian to little endian because the input is 32bit float big endian
         #if defined __GNUC__
             number = (__builtin_bswap32(number));
         #elif defined _MSC_VER
@@ -388,9 +425,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
         if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
             dataList.push_back(floatnum);
         }
-        std::cout << "\r" << getProgressBar(100. / finishValue * (i + 1)); //show progress
     }
-    std::cout << std::endl;
     if (!inputFile.good() && !inputFile.eof()) {
         std::cout << "ERROR: import data" << std::endl; //status msg
         std::cout << "\tError while reading the source file." << std::endl; //status msg
@@ -485,16 +520,16 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
             switch(showBarTheme) { //show progressbar
-            case 0:
+            case 0: //only absolute value
                 std::cout << "\r" << curRawProgress << " / " << finishValue;
                 break;
-            case 1:
+            case 1: //only progress bar
                 std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
                 break;
-            case 2:
+            case 2: //progress bar + absolute value
                 std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
                 break;
-            default:
+            default: //progress bar + absolute value + remaining time
                 time(&ends);
                 std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
                 std::cout << std::fixed << " | " << (int) ((difftime(ends, start) / curRawProgress) * (finishValue - curRawProgress) / 60) << "m";
@@ -505,7 +540,7 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
     std::cout << std::endl;
 }
 
-const std::string getCurrentTime() {
+const std::string getCurrentTime() { //return the current time. format: year_month_day_hour_minute_second
     time_t     now = time(0);
     struct tm  tstruct;
     char       buf[25];
