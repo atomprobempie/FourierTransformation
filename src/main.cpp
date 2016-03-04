@@ -1,4 +1,9 @@
 /*
+    TODO:
+        temporary result file
+        restart from temp file
+*/
+/*
     Developer:
     Thanks to:
 
@@ -254,17 +259,18 @@ void getHelp() { //help and info section
     std::cout << "Language: C++" << std::endl;
     std::cout << "License: " << std::endl;
     std::cout << std::endl;
-    std::cout << "HELP SECTION" << std::endl;
-    std::cout << "  It gets a source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
+    std::cout << "HELP" << std::endl;
+    std::cout << "  The source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <mass>" << std::endl;
-    std::cout << "  With the Coordinates it will perform a 3D Direct Fourier Transformation (no Fast Fourier)" << std::endl;
-    std::cout << "  The export file will be exported if no path is given to export/" << std::endl;
+    std::cout << "  With the Coordinates a 3D Direct Fourier Transformation will be performed (no Fast Fourier)" << std::endl;
+    std::cout << "  If no export path is given it will be exported to export/" << std::endl;
     std::cout << std::endl;
+    std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "You can start this program even with arguments:" << std::endl;
     std::cout << "  <source file> <export file> <force creating>" << std::endl;
     std::cout << "Source File:" << std::endl;
-    std::cout << "  Given as absolute path or relative path to the executable (use only \"/\" !)"<< std::endl;
-    std::cout << "  Further if a directory has a space in it surround it with \"" << std::endl;
+    std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
+    std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
     std::cout << "Export File:" << std::endl;
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
@@ -279,13 +285,13 @@ void getHelp() { //help and info section
 
 void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for import and export path
     std::cout << "Note: no arguments given" << std::endl; //status msg
-    std::cout << "\tYou can use absolute paths or a relative path based on the execution file" << std::endl;
+    std::cout << "\tYou can use absolute paths or a relative path based on the execution folder" << std::endl;
     std::cout << "\tUse /" << std::endl;
     std::cout << "Source file: ";
     std::getline(std::cin, sourcePath);
     std::cout << std::endl;
 
-    std::cout << "\tIf you dont set a export path the export folder in your execution file will be used." << std::endl;
+    std::cout << "\tIf you do not set an export path, the export folder in your execution folder will be used." << std::endl;
     std::cout << "Export path: ";
     std::getline(std::cin, exportPath);
     if (exportPath == "") { //if no export path, use default
