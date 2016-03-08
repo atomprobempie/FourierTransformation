@@ -268,14 +268,14 @@ void getHelp() { //help and info section
     std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "You can start this program even with arguments:" << std::endl;
     std::cout << "  <source file> <export file> <force creating>" << std::endl;
-    std::cout << "Source File:" << std::endl;
+    std::cout << "Source File: (needed)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
-    std::cout << "Export File:" << std::endl;
+    std::cout << "Export File: (optional)" << std::endl;
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
     std::cout << "  (<X real part>, <X imaginary part>) (<Y r. part>, <Y i. part>) (<Z r. part>, <Z i. part>)" << std::endl;
-    std::cout << "Force creating:" << std::endl;
+    std::cout << "Force creating: (optional)" << std::endl;
     std::cout << "  If this option is 1 it will not ask if a missing export path should be created." << std::endl;
     std::cout << "  It will just do it." << std::endl;
     std::cout << std::endl;
