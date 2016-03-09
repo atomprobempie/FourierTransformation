@@ -2,6 +2,7 @@
     TODO:
         temporary result file
         restart from temp file
+        check file access at the end again
 */
 /*
     Developer:
@@ -48,8 +49,7 @@
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
-void correctDirPath(std::string& path);
-void correctFilePath(std::string& path);
+void correctPath(std::string& path);
 const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
@@ -74,6 +74,8 @@ int main(int argc, char* argv[]) {
     std::string sourcePath;
     std::string exportPath;
     bool forceCreateExpPath = false; //force creating export path
+    bool useTempBackup = false; //enables writing current results to hard disk, to prevent crashes
+    bool noRestartingCalc = false; //enables writing current results to hard disk, to prevent crashes
     {
         //path managing
         if (argc == 1) { //if no paths are given with the arguments
@@ -84,18 +86,20 @@ int main(int argc, char* argv[]) {
                 getHelp();
                 return 0;
             }
-            if (argc > 2) { //export path is second argument
-                exportPath = argv[2];
-            } else { //no export path given
-                exportPath = "export/";
-            }
-            if (argc > 3) { //force creating export path is third argument
-                if (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0) { //check if the argument is correct
-                    std::cout << "ERROR: wrong third argument" << std::endl; //status msg
-                    std::cout << "CLOSED" << std::endl; //status msg
-                    return -1;
+            for (int i = 2; i < argc; i++) {
+                std::string curString(argv[i]);
+                if (curString == "-f") {
+                    forceCreateExpPath = true;
+                } else if (curString == "-t") {
+                    useTempBackup = true;
+                } else if (curString == "-c") {
+                    noRestartingCalc = true;
+                } else if ((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) {
+                    exportPath = argv[i];
                 }
-                forceCreateExpPath = (strcmp(argv[3], "1") == 0);
+            }
+            if (exportPath == "") { //no export path given
+                exportPath = "export/";
             }
         }
         if (sourcePath == "?help") { //show help
@@ -104,8 +108,8 @@ int main(int argc, char* argv[]) {
         }
 
         //correct some mistakes in the paths
-        correctFilePath(std::ref(sourcePath));
-        correctDirPath(std::ref(exportPath));
+        correctPath(std::ref(sourcePath));
+        correctPath(std::ref(exportPath));
 
         //check paths
         std::cout << "Source file: " << sourcePath << std::endl;
@@ -131,9 +135,9 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
             }
-            std::cout << "START: Creating export directory" << std::endl; //status msg
+            std::cout << "START: creating export directory" << std::endl; //status msg
             if (!createDir(exportPath)) { //create directory
-                std::cout << "ERROR: Creating export directory" << std::endl; //status msg
+                std::cout << "ERROR: creating export directory" << std::endl; //status msg
                 std::cout << "CLOSED" << std::endl; //status msg
                 return -1;
             }
@@ -165,27 +169,6 @@ int main(int argc, char* argv[]) {
     //std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
     //save source data here if its needed
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
-    /*
-        //test values
-        dataList.push_back(6.300058841705322265625);
-        dataList.push_back(11.27175426483154296875);
-        dataList.push_back(9.9945583343505859375);
-        dataList.push_back(6.81645107269287109375);
-        dataList.push_back(10.869720458984375);
-        dataList.push_back(9.98496723175048828125);
-        dataList.push_back(6.258909702301025390625);
-        dataList.push_back(11.07165622711181640625);
-        dataList.push_back(9.96583461761474609375);
-        dataList.push_back(6.63667011260986328125);
-        dataList.push_back(11.12175464630126953125);
-        dataList.push_back(9.89614772796630859375);
-
-        /* results:
-        (110.1884918212890625, 0)	(-16.076107025146484375, -3.8913784027099609375)	(-16.076107025146484375, 3.8913784027099609375)
-        (0.2699718475341796875, -0.016567230224609375)	(0.2219267189502716064453125, -0.40980243682861328125)	(-0.3684501945972442626953125, -0.1129741668701171875)
-        (-0.462940216064453125, -6.8629455417246187920454758568667e-015)	(-1.10975933074951171875, -0.2361278235912322998046875)	(-1.10975933074951171875, 0.2361278235912322998046875)
-        (0.2699718475341796875, 0.016567230224609375)	(-0.3684501945972442626953125, 0.1129741668701171875)	(0.2219267189502716064453125, 0.40980243682861328125)
-        */
 
     //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
@@ -241,7 +224,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     std::cout << "DONE: saving DFT data" << std::endl; //status msg
-    //if (argc == 1) { ///DEV //does not need to close it manually if arguments were given, because automatic systems doesnt need those
+    //if (argc == 1) { ///DEV //does not need to close it manually if arguments were given, because matic systems doesnt need those
         std::cout << "Press return to close the program.";
         std::cin.get();
     //}
@@ -266,20 +249,25 @@ void getHelp() { //help and info section
     std::cout << "  If no export path is given it will be exported to export/" << std::endl;
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
-    std::cout << "You can start this program even with arguments:" << std::endl;
-    std::cout << "  <source file> <export file> <force creating>" << std::endl;
-    std::cout << "Source File: (needed)" << std::endl;
+    std::cout << "You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
+    std::cout << "  <source file> <export file> -f -t -c" << std::endl;
+    std::cout << "Source File: (required)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
     std::cout << "Export File: (optional)" << std::endl;
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
     std::cout << "  (<X real part>, <X imaginary part>) (<Y r. part>, <Y i. part>) (<Z r. part>, <Z i. part>)" << std::endl;
-    std::cout << "Force creating: (optional)" << std::endl;
-    std::cout << "  If this option is 1 it will not ask if a missing export path should be created." << std::endl;
+    std::cout << "Force creating export file: (optional)" << std::endl;
+    std::cout << "  If -f is set it will not ask if a missing export path should be created." << std::endl;
     std::cout << "  It will just do it." << std::endl;
+    std::cout << "Use temporary files: (optional)" << std::endl;
+    std::cout << "  If -t is set it will create temporary files with the current result." << std::endl;
+    std::cout << "  If something is gone wrong it can be continue then." << std::endl;
+    std::cout << "Not continue calculation: (optional)" << std::endl;
+    std::cout << "  If -c is set it it will not try to continue a saved, started calculation." << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ 1" << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ -f -t -c" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
 }
 
@@ -300,26 +288,7 @@ void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for impo
     std::cout << std::endl;
 }
 
-void correctDirPath(std::string& path) {
-    size_t pos = path.find("\\");
-    while(pos != std::string::npos) { //replace all \ with /
-        path.replace(pos, 1, "/");
-        pos = path.find("\\");
-    }
-    pos = path.find("//");
-    while(pos != std::string::npos) { //replace // with /
-        path.replace(pos, 2, "/");
-        pos = path.find("//");
-    }
-    if (path[0] == '/') { //deletes a / if its the first char
-        path.erase(0,1);
-    }
-    if (path[path.size() - 1] != '/') { //adds a / at the end if its not there
-        path += '/';
-    }
-}
-
-void correctFilePath(std::string& path) {
+void correctPath(std::string& path) {
     size_t pos = path.find("\\");
     while(pos != std::string::npos) { //replace all \ with /
         path.replace(pos, 1, "/");
