@@ -287,8 +287,8 @@ void getHelp() { //help and info section
     std::cout << "  If no export path is given it will be exported to export/" << std::endl;
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
-    std::cout << "You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
-    std::cout << "  <source file> <export file> -f -t -c" << std::endl;
+    std::cout << "  You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
+    std::cout << "  <source file> <export file> -p <temporary path> -f -t -c -o" << std::endl;
     std::cout << "Source File: (required)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
@@ -296,16 +296,21 @@ void getHelp() { //help and info section
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
     std::cout << "  (<X real part>, <X imaginary part>) (<Y r. part>, <Y i. part>) (<Z r. part>, <Z i. part>)" << std::endl;
-    std::cout << "Force creating export file: (optional)" << std::endl;
-    std::cout << "  If -f is set it will not ask if a missing export path should be created." << std::endl;
+    std::cout << "Custom temporary path: (optional)" << std::endl;
+    std::cout << "  If -p is set after it the path must follow, default path is temp/." << std::endl;
+    std::cout << "  -p is not forcing using the temporary files." << std::endl;
+    std::cout << "Force creating files: (optional)" << std::endl;
+    std::cout << "  If -f is set it will not ask if a missing path should be created." << std::endl;
     std::cout << "  It will just do it." << std::endl;
-    std::cout << "Use temporary files: (optional)" << std::endl;
-    std::cout << "  If -t is set it will create temporary files with the current result." << std::endl;
-    std::cout << "  If something is gone wrong it can be continue then." << std::endl;
+    std::cout << "Use NOT temporary files: (optional)" << std::endl;
+    std::cout << "  If -t is set it will NOT create temporary files with the current result." << std::endl;
+    std::cout << "  If something is gone wrong it can not be continue then." << std::endl;
     std::cout << "Not continue calculation: (optional)" << std::endl;
-    std::cout << "  If -c is set it it will not try to continue a saved, started calculation." << std::endl;
+    std::cout << "  If -o is set it it will not try to continue a saved, started calculation." << std::endl;
+    std::cout << "Automatically close the program: (optional)" << std::endl;
+    std::cout << "  If -o is set it will close automatically the program." << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ -f -t -c" << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ -p temporary/path/ -f -t -c -o" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
 }
 
