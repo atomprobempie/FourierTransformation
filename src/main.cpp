@@ -62,7 +62,6 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
 const std::string getCurrentTime();
 bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 
-
 int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << "Direct Fourier Transformation of 3D points. - development version" << std::endl << std::endl;
@@ -78,6 +77,9 @@ int main(int argc, char* argv[]) {
     std::string backupPath = "backup/";
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::vector<int> reciList;
+    int reciStart = -10;
+    int reciEnds = 10;
+
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
     bool forceCreatePath = false; //force creating export path
@@ -96,20 +98,24 @@ int main(int argc, char* argv[]) {
                 getHelp();
                 return 0;
             }
+
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
-                if (curString == "-f") { //force create path
+                if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
+                    exportPath = argv[i];
+                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) { //backup path
+                    backupPath = argv[i];
+                } else if (curString == "-f") { //force create path
                     forceCreatePath = true;
                 } else if (curString == "-b") { //use backup files
                     useBackup = false;
                 } else if (curString == "-c") { //no restarting of previous calculations
                     RestartingCalc = false;
+                } else if ( (isInt(std::string(argv[i - 2]))) && (isInt(std::string(argv[i - 1]))) && (curString == "-s") ) { //set reciprocal space minimum and maximum (distance is 1)
+                    reciStart = std::stoi( std::string(argv[i - 2]) );
+                    reciEnds = std::stoi( std::string(argv[i - 1]) );
                 } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
-                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) { //backup path
-                    backupPath = argv[i];
-                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
-                    exportPath = argv[i];
                 } else if (isInt(curString)) { //try forcing using this value of threads
                     if ((std::stoi(curString) >= 1) && (std::string(argv[i - 1]) == "-t")) {
                         custThreads = std::stoi(curString);
@@ -120,6 +126,13 @@ int main(int argc, char* argv[]) {
         if (sourcePath == "?help") { //show help
             getHelp();
             return 0;
+        }
+
+        //check reci start/ end
+        if (reciStart >= reciEnds) {
+            std::cout << "ERROR: reciprocal lattice start is not lower as the end" << std::endl; //status msg
+            std::cout << "CLOSED" << std::endl; //status msg
+            return -1;
         }
 
         //correct possible input mistakes
@@ -188,7 +201,10 @@ int main(int argc, char* argv[]) {
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
 
     //create reciprocal lattice
-    createReciLattice(reciList, -10, 10, 1);
+    createReciLattice(reciList, reciStart, reciEnds, 1);
+    std::cout << "Reciprocal Lattice:" << std::endl;
+    std::cout << "  Start: " << reciStart << std::endl;
+    std::cout << "  End: " << reciEnds << std::endl;
 
     //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
@@ -337,7 +353,7 @@ void getHelp() { //help and info section
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "  You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
-    std::cout << "  <source file> -e <export file> -p <temporary path> -f -b -c -o -t <threads>" << std::endl;
+    std::cout << "  <source file> -e <export file> -p <temporary path> -f -b -c -s <start> <end> -o -t <threads>" << std::endl;
     std::cout << "Source File: (required)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
@@ -356,13 +372,16 @@ void getHelp() { //help and info section
     std::cout << "  If something is gone wrong it can not be continue then." << std::endl;
     std::cout << "-c Not continue calculation: (optional)" << std::endl;
     std::cout << "  If -o is set it it will not try to continue a saved, started calculation." << std::endl;
+    std::cout << "-s Set reciprocal space" << std::endl;
+    std::cout << "  If -s is set two numbers must follow after it, first is the start and the second is the end of the" << std::endl;
+    std::cout << "  reciprocal space." << std::endl;
     std::cout << "-o Automatically close the program: (optional)" << std::endl;
     std::cout << "  If -o is set it will close automatically the program." << std::endl;
     std::cout << "-t Thread numbers: (optional)" << std::endl;
     std::cout << "  If -t is set a number must follow after it, it tries to force using this value of threads." << std::endl;
     std::cout << "  At least the minimum is one threads." << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -e \"my export\"/path/ -p temporary/path/ -f -b -c -o -t 24" << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -e \"my export\"/path/ -p temporary/path/ -f -b -c -s -20 20 -o -t 24" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
 }
 
@@ -580,8 +599,8 @@ void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, c
         tempRe = 0;
         tempIm = 0;
         for (unsigned int k = 0; k < srcSize; k++) {
-            tempRe += std::cos( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
-            tempIm += std::sin( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
+            tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
+            tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
         }
         threadOutputList.push_back(std::sqrt(tempIm * tempIm + tempRe * tempRe));  //norm of real and imaginary
     }
@@ -600,8 +619,8 @@ void DFTwithBackup(const std::vector<float>& dataList, const std::vector<int>& r
         tempRe = 0;
         tempIm = 0;
         for (unsigned int k = 0; k < srcSize; k++) {
-            tempRe += std::cos( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
-            tempIm += std::sin( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
+            tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
+            tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
         }
         result = std::sqrt(tempIm * tempIm + tempRe * tempRe); //norm of real and imaginary
         backupFile.write((char*)& result, sizeof(float));
