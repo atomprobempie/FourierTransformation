@@ -1,7 +1,6 @@
 /*
     TODO:
         restart from temp file
-        use autoClose
 */
 /*
     Developer:
@@ -47,6 +46,7 @@
 #include <stdint.h>
 
 void getHelp();
+bool isInt(std::string input);
 void getPaths(std::string &sourcePath, std::string &exportPath);
 void correctPath(std::string& path);
 const std::string checkFileAccess(std::string path, int arg);
@@ -55,7 +55,7 @@ bool checkExportPath(std::string exportPath, bool forceCreatePath);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
 void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
-void DFTwithTemp(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, bool useTempBackup, std::string tempPath);
+void DFTwithBackup(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
 const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
@@ -74,13 +74,15 @@ int main(int argc, char* argv[]) {
     //get paths
     std::string sourcePath;
     std::string exportPath = "export/";
-    std::string tempPath = "temp/";
-    std::vector<std::string> tempPathList;
+    std::string backupPath = "backup/";
+    std::vector<std::string> backupPathList;
     bool forceCreatePath = false; //force creating export path
-    bool useTempBackup = true; //enables writing current results to hard disk, to prevent crashes
+    bool useBackup = true; //enables writing current results to hard disk, to prevent crashes
     bool RestartingCalc = true; //no restarting even if a correct temp was found
     bool autoClose = false; //closes automatically the program
+    unsigned int custThreads = 0;
 
+    {
         //path managing
         if (argc == 1) { //if no paths are given with the arguments
             getPaths(std::ref(sourcePath), std::ref(exportPath)); //ask for import and export path
@@ -90,20 +92,24 @@ int main(int argc, char* argv[]) {
                 getHelp();
                 return 0;
             }
-            for (int i = 2; i < argc; i++) {
+            for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
-                if (curString == "-f") {
+                if (curString == "-f") { //force create path
                     forceCreatePath = true;
-                } else if (curString == "-t") {
-                    useTempBackup = false;
-                } else if (curString == "-c") {
+                } else if (curString == "-b") { //use backup files
+                    useBackup = false;
+                } else if (curString == "-c") { //no restarting of previous calculations
                     RestartingCalc = false;
-                } else if (curString == "-o") {
+                } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
-                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) {
-                    tempPath = argv[i];
-                } else if ((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) {
+                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) { //backup path
+                    backupPath = argv[i];
+                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
                     exportPath = argv[i];
+                } else if (isInt(curString)) { //try forcing using this value of threads
+                    if ((std::stoi(curString) > 2) && (std::string(argv[i - 1]) == "-t")) {
+                        custThreads = std::stoi(curString);
+                    }
                 }
             }
         }
@@ -112,18 +118,20 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        //correct some mistakes in the paths
+        //correct possible input mistakes
         correctPath(std::ref(sourcePath));
         correctPath(std::ref(exportPath));
-        correctPath(std::ref(tempPath));
+        correctPath(std::ref(backupPath));
 
-        //check paths
         std::cout << "Source file: " << sourcePath << std::endl;
         std::cout << "Export dir:  " << exportPath << std::endl;
-        if (useTempBackup) {
-            std::cout << "Temp dir:  " << tempPath << std::endl;
+        if (useBackup) {
+            std::cout << "Temp dir:  " << backupPath << std::endl;
         }
+    }
+
     {
+        //check paths
         std::cout << "START: checking given paths" << std::endl; //status msg
         std::string tmpmsg = checkFileAccess(sourcePath, 1);
         if (tmpmsg != "") { //check source file path, if a error is returned
@@ -136,23 +144,23 @@ int main(int argc, char* argv[]) {
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
         }
-        if (useTempBackup) {
-            if ((_access_s(tempPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of temporary path
-                std::cout << "Note: temporary path is not existing." << std::endl; //status msg
-                std::cout << "START: creating temporary directory" << std::endl; //status msg
-                if (!createDir(tempPath)) { //create directory
-                    std::cout << "ERROR: creating temporary directory" << std::endl; //status msg
-                    std::cout << "WARNING: temporary backup is disabled"; //status msg
-                    useTempBackup = false;
+        if (useBackup) {
+            if ((_access_s(backupPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of backup path
+                std::cout << "Note: backup path is not existing." << std::endl; //status msg
+                std::cout << "START: creating backup directory" << std::endl; //status msg
+                if (!createDir(backupPath)) { //create directory
+                    std::cout << "ERROR: creating backup directory" << std::endl; //status msg
+                    std::cout << "WARNING: backup backup is disabled"; //status msg
+                    useBackup = false;
                 } else {
-                    std::cout << "DONE: Creating temporary directory" << std::endl; //status msg
+                    std::cout << "DONE: Creating backup directory" << std::endl; //status msg
                 }
             } else { //is existing
-                tmpmsg = checkFileAccess(tempPath, 2); //check exist and write access, returns an error reason if an error occurred
+                tmpmsg = checkFileAccess(backupPath, 2); //check exist and write access, returns an error reason if an error occurred
                 if (tmpmsg != "") {
-                    std::cout << "ERROR: temporary path is " << tmpmsg << std::endl; //status msg
-                    std::cout << "WARNING: temporary backup is disabled"; //status msg
-                    useTempBackup = false;
+                    std::cout << "ERROR: backup path is " << tmpmsg << std::endl; //status msg
+                    std::cout << "WARNING: backup backup is disabled"; //status msg
+                    useBackup = false;
                 }
             }
         }
@@ -172,23 +180,24 @@ int main(int argc, char* argv[]) {
     std::cout << "DONE: import data" << std::endl; //status msg
 
     //std::cout << "START: write source data to file" << std::endl; //status msg
-    //std::cout << getProgressBar(-2) << std::endl; //show the snail; until theres now progressbar for input reading
+    //std::cout << getProgressBar(-2) << std::endl; //show the snail
     //save source data here if its needed
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
 
     //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
+    if (custThreads >= 2) {
+        tmpMaxThreads = custThreads;
+    }
     if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
-        if (tmpMaxThreads > ((dataList.size() / 3) / 2))  { //prevent of using more threads as indices
+        if (tmpMaxThreads > ((dataList.size() / 3) / 2)) { //if using more threads as indices
             tmpMaxThreads = ((dataList.size() / 3) / 2); //use at least indices / 2 threads
-        } else {
-            tmpMaxThreads = std::thread::hardware_concurrency();
         }
     } else { //if it was not possible use at least one extra thread
         tmpMaxThreads = 2;
     }
     const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
-    std::cout << "Note: " << maxThreads << " threads will be used." << std::endl; //status msg
+    std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
 
     //init the outputlist
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
@@ -203,17 +212,14 @@ int main(int argc, char* argv[]) {
 
         //init the temp paths
         for (unsigned int i = 0; i < (boundsList.size() - 1); i++) {
-            tempPathList.push_back(tempPath + std::to_string(boundsList[i]) + ".tmp");
+            backupPathList.push_back(backupPath + std::to_string(boundsList[i]) + ".tmp");
         }
 
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
-        time_t start, end;
-        time(&start);
-
         //configure threads
         for (unsigned int i = 1; i < maxThreads; ++i) {
-            if (useTempBackup) {
-                threads[i - 1] = std::thread(DFTwithTemp, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), true, tempPathList[i]); //std::ref forces the input as reference because thread doesnt allow this normally
+            if (useBackup) {
+                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i]); //std::ref forces the input as reference because thread doesnt allow this normally
             } else {
                 threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
             }
@@ -223,8 +229,10 @@ int main(int argc, char* argv[]) {
         std::cout << "START: calculating DFT" << std::endl; //status msg
         //start threads
 
-        if (useTempBackup) {
-            DFTwithTemp(dataList, boundsList[0], boundsList[1], outputList[0], true, tempPathList[0]);
+        time_t start, end;
+        time(&start);
+        if (useBackup) {
+            DFTwithBackup(dataList, boundsList[0], boundsList[1], outputList[0], backupPathList[0]);
         } else {
             DFT(dataList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         }
@@ -245,7 +253,7 @@ int main(int argc, char* argv[]) {
             std::cout << "START: saving DFT data" << std::endl; //status msg
             std::string tmpmsg = checkFileAccess(exportPath, 2); //check exist and write access, returns an error reason if an error occurred
             if (tmpmsg != "") { //if theres an error
-                std::cout << "ERROR: saving DFT data" << std::endl;
+                std::cout << "ERROR: saving DFT data" << std::endl; //status msg
                 std::cout << "\texport path is " << tmpmsg << std::endl; //status msg
                 std::cout << "Please choose another path. ?cancel for abort saving results.";
 
@@ -263,7 +271,7 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
 
-                correctPath(std::ref(exportPath));
+                correctPath(std::ref(exportPath)); //correct possible input mistakes
                 std::cout << "Export dir:  " << exportPath << std::endl; //status msg
                 if (checkExportPath(exportPath, forceCreatePath) == false) { //check and create if needed export path
                     std::cout << "ERROR: saving DFT data" << std::endl; //status msg
@@ -272,7 +280,7 @@ int main(int argc, char* argv[]) {
             }
 
             int maxTries = 2;
-            for (int tries = 0; !(userCancel = saveToFile(std::ref(outputList), exportPath)) && (tries < maxTries); tries++) { //save DFT results; try two times if needed
+            for (int tries = 0; !(userCancel = saveToFile(std::ref(outputList), exportPath)) && (tries < maxTries); tries++) { //save DFT results; trying maxTries times if needed if its done userCancel will be true
                 std::cout << "ERROR: saving DFT data" << std::endl; //status msg
                 if (tries < maxTries) {
                     std::cout << "\tRetrying saving DFT data" << std::endl; //status msg
@@ -283,9 +291,9 @@ int main(int argc, char* argv[]) {
     }
 
     {
-        bool cleanUp = true;
+        bool cleanUp = true; //check var for checking if the cleaning up was succeed
         std::cout << "START: clean up temporary files" << std::endl; //status msg
-        for (auto curPath : tempPathList) {
+        for (auto curPath : backupPathList) { //remove all backup files
             cleanUp = ((remove(curPath.c_str()) == 0) && cleanUp);
         }
         if (!cleanUp) {
@@ -322,11 +330,11 @@ void getHelp() { //help and info section
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "  You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
-    std::cout << "  <source file> <export file> -p <temporary path> -f -t -c -o" << std::endl;
+    std::cout << "  <source file> -e <export file> -p <temporary path> -f -b -c -o -t <threads>" << std::endl;
     std::cout << "Source File: (required)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
-    std::cout << "Export File: (optional)" << std::endl;
+    std::cout << "-e Export File: (optional)" << std::endl;
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
     std::cout << "  (<X real part>, <X imaginary part>) (<Y r. part>, <Y i. part>) (<Z r. part>, <Z i. part>)" << std::endl;
@@ -336,16 +344,28 @@ void getHelp() { //help and info section
     std::cout << "-f Force creating files: (optional)" << std::endl;
     std::cout << "  If -f is set it will not ask if a missing path should be created." << std::endl;
     std::cout << "  It will just do it." << std::endl;
-    std::cout << "-t Use NOT temporary files: (optional)" << std::endl;
-    std::cout << "  If -t is set it will NOT create temporary files with the current result." << std::endl;
+    std::cout << "-b Use NOT backup files: (optional)" << std::endl;
+    std::cout << "  If -t is set it will NOT create backup files with the current result." << std::endl;
     std::cout << "  If something is gone wrong it can not be continue then." << std::endl;
     std::cout << "-c Not continue calculation: (optional)" << std::endl;
     std::cout << "  If -o is set it it will not try to continue a saved, started calculation." << std::endl;
     std::cout << "-o Automatically close the program: (optional)" << std::endl;
     std::cout << "  If -o is set it will close automatically the program." << std::endl;
+    std::cout << "-t Thread numbers: (optional)" << std::endl;
+    std::cout << "  If -t is set a number must follow after it, it tries to force using this value of threads." << std::endl;
+    std::cout << "  At least the minimum is two threads." << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos \"my export\"/path/ -p temporary/path/ -f -t -c -o" << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -e \"my export\"/path/ -p temporary/path/ -f -b -c -o -t 24" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
+}
+
+bool isInt(std::string input) {
+    for (auto curChar : input) {
+        if ((curChar < 48) || (curChar > 57)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for import and export path
@@ -564,9 +584,9 @@ void DFT(const std::vector<float>& dataList, const unsigned int start, const uns
     }
 }
 
-void DFTwithTemp(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, bool useTempBackup, std::string tempPath) {
+void DFTwithBackup(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
     std::ofstream tempFile;
-    tempFile.open(tempPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+    tempFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
 
     const unsigned int M = (dataList.size() / 3); //
     float tempRe = 0; //real part
