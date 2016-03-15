@@ -53,13 +53,14 @@ const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
 bool checkExportPath(std::string exportPath, bool forceCreatePath);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
+void createReciLattice(std::vector<int>& reciList, int start, int ends, int distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
-void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
-void DFTwithBackup(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
+void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
 const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
-bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
+bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 
 
 int main(int argc, char* argv[]) {
@@ -75,6 +76,9 @@ int main(int argc, char* argv[]) {
     std::string sourcePath;
     std::string exportPath = "export/";
     std::string backupPath = "backup/";
+    std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
+    std::vector<int> reciList;
+    std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
     bool forceCreatePath = false; //force creating export path
     bool useBackup = true; //enables writing current results to hard disk, to prevent crashes
@@ -85,7 +89,7 @@ int main(int argc, char* argv[]) {
     {
         //path managing
         if (argc == 1) { //if no paths are given with the arguments
-            getPaths(std::ref(sourcePath), std::ref(exportPath)); //ask for import and export path
+            getPaths(sourcePath, exportPath); //ask for import and export path
         } else {
             sourcePath = argv[1]; //source path is the first argument
             if (sourcePath == "?help") { //show help
@@ -107,7 +111,7 @@ int main(int argc, char* argv[]) {
                 } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
                     exportPath = argv[i];
                 } else if (isInt(curString)) { //try forcing using this value of threads
-                    if ((std::stoi(curString) > 2) && (std::string(argv[i - 1]) == "-t")) {
+                    if ((std::stoi(curString) >= 1) && (std::string(argv[i - 1]) == "-t")) {
                         custThreads = std::stoi(curString);
                     }
                 }
@@ -119,9 +123,9 @@ int main(int argc, char* argv[]) {
         }
 
         //correct possible input mistakes
-        correctPath(std::ref(sourcePath));
-        correctPath(std::ref(exportPath));
-        correctPath(std::ref(backupPath));
+        correctPath(sourcePath);
+        correctPath(exportPath);
+        correctPath(backupPath);
 
         std::cout << "Source file: " << sourcePath << std::endl;
         std::cout << "Export dir:  " << exportPath << std::endl;
@@ -168,10 +172,9 @@ int main(int argc, char* argv[]) {
     }
 
     //import source
-    std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::cout << "START: import data" << std::endl; //status msg
     std::cout << "\r" << getProgressBar(-2); //show progress snail
-    if (!readInputFile(sourcePath, std::ref(dataList))) { //read data from file and save it into dataList
+    if (!readInputFile(sourcePath, dataList)) { //read data from file and save it into dataList
         std::cout << "CLOSED" << std::endl; //status msg
         return 1;
     }
@@ -184,14 +187,17 @@ int main(int argc, char* argv[]) {
     //save source data here if its needed
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
 
+    //create reciprocal lattice
+    createReciLattice(reciList, -10, 10, 1);
+
     //set the max threads which can be used; inclusive the main thread
     unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
     if (custThreads >= 2) {
         tmpMaxThreads = custThreads;
     }
     if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
-        if (tmpMaxThreads > ((dataList.size() / 3) / 2)) { //if using more threads as indices
-            tmpMaxThreads = ((dataList.size() / 3) / 2); //use at least indices / 2 threads
+        if (tmpMaxThreads > ((reciList.size() / 3) / 2)) { //if using more threads as indices
+            tmpMaxThreads = ((reciList.size() / 3) / 2); //use at least indices / 2 threads
         }
     } else { //if it was not possible use at least one extra thread
         tmpMaxThreads = 2;
@@ -200,7 +206,6 @@ int main(int argc, char* argv[]) {
     std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
 
     //init the outputlist
-    std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
         outputList.push_back(std::vector<float>());
     }
@@ -208,7 +213,7 @@ int main(int argc, char* argv[]) {
     {
         //DFT
         std::vector<unsigned int> boundsList; //init the bounds vector
-        calcPartSize(boundsList, (dataList.size() / 3), maxThreads); //save the bounds into boundsList
+        calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList
 
         //init the temp paths
         for (unsigned int i = 0; i < (boundsList.size() - 1); i++) {
@@ -219,12 +224,12 @@ int main(int argc, char* argv[]) {
         //configure threads
         for (unsigned int i = 1; i < maxThreads; ++i) {
             if (useBackup) {
-                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i]); //std::ref forces the input as reference because thread doesnt allow this normally
+                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i]); //std::ref forces the input as reference because thread doesnt allow this normally
             } else {
-                threads[i - 1] = std::thread(DFT, std::ref(dataList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
+                threads[i - 1] = std::thread(DFT, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
             }
         }
-        std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (dataList.size() / 3), 2, 3); //DFTprogress thread
+        std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (reciList.size() / 3), 2, 3); //DFTprogress thread
 
         std::cout << "START: calculating DFT" << std::endl; //status msg
         //start threads
@@ -232,9 +237,9 @@ int main(int argc, char* argv[]) {
         time_t start, end;
         time(&start);
         if (useBackup) {
-            DFTwithBackup(dataList, boundsList[0], boundsList[1], outputList[0], backupPathList[0]);
+            DFTwithBackup(dataList, reciList, boundsList[0], boundsList[1], outputList[0], backupPathList[0]);
         } else {
-            DFT(dataList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
+            DFT(dataList, reciList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         }
         for (unsigned int i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
@@ -271,7 +276,7 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
 
-                correctPath(std::ref(exportPath)); //correct possible input mistakes
+                correctPath(exportPath); //correct possible input mistakes
                 std::cout << "Export dir:  " << exportPath << std::endl; //status msg
                 if (checkExportPath(exportPath, forceCreatePath) == false) { //check and create if needed export path
                     std::cout << "ERROR: saving DFT data" << std::endl; //status msg
@@ -280,7 +285,7 @@ int main(int argc, char* argv[]) {
             }
 
             int maxTries = 2;
-            for (int tries = 0; !(userCancel = saveToFile(std::ref(outputList), exportPath)) && (tries < maxTries); tries++) { //save DFT results; trying maxTries times if needed if its done userCancel will be true
+            for (int tries = 0; !(userCancel = saveToFile(reciList, outputList, exportPath)) && (tries < maxTries); tries++) { //save DFT results; trying maxTries times if needed if its done userCancel will be true
                 std::cout << "ERROR: saving DFT data" << std::endl; //status msg
                 if (tries < maxTries) {
                     std::cout << "\tRetrying saving DFT data" << std::endl; //status msg
@@ -291,16 +296,18 @@ int main(int argc, char* argv[]) {
     }
 
     {
-        bool cleanUp = true; //check var for checking if the cleaning up was succeed
-        std::cout << "START: clean up temporary files" << std::endl; //status msg
-        for (auto curPath : backupPathList) { //remove all backup files
-            cleanUp = ((remove(curPath.c_str()) == 0) && cleanUp);
-        }
-        if (!cleanUp) {
-            std::cout << "ERROR: clean up temporary files" << std::endl; //status msg
-            std::cout << "\tmaybe could not clean up all temporary files" << std::endl; //status msg
-        } else {
-            std::cout << "DONE: clean up temporary files" << std::endl; //status msg
+        if (useBackup) {
+            bool cleanUp = true; //check var for checking if the cleaning up was succeed
+            std::cout << "START: clean up temporary files" << std::endl; //status msg
+            for (auto curPath : backupPathList) { //remove all backup files
+                cleanUp = ((remove(curPath.c_str()) == 0) && cleanUp);
+            }
+            if (!cleanUp) {
+                std::cout << "ERROR: clean up temporary files" << std::endl; //status msg
+                std::cout << "\tmaybe could not clean up all temporary files" << std::endl; //status msg
+            } else {
+                std::cout << "DONE: clean up temporary files" << std::endl; //status msg
+            }
         }
     }
 
@@ -353,7 +360,7 @@ void getHelp() { //help and info section
     std::cout << "  If -o is set it will close automatically the program." << std::endl;
     std::cout << "-t Thread numbers: (optional)" << std::endl;
     std::cout << "  If -t is set a number must follow after it, it tries to force using this value of threads." << std::endl;
-    std::cout << "  At least the minimum is two threads." << std::endl;
+    std::cout << "  At least the minimum is one threads." << std::endl;
     std::cout << std::endl;
     std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -e \"my export\"/path/ -p temporary/path/ -f -b -c -o -t 24" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
@@ -537,6 +544,20 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
     return true;
 }
 
+void createReciLattice(std::vector<int>& reciList, int start, int ends, int distance) { //create reciprocal space
+    distance = 1;
+
+    for (int i = start; i <= ends; i += distance) {
+        for (int k = start; k <= ends; k += distance) {
+            for (int o = start; o <= ends; o += distance) {
+                reciList.push_back(i);
+                reciList.push_back(k);
+                reciList.push_back(o);
+            }
+        }
+    }
+}
+
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
     unsigned int partsize = numbers / cores;
 
@@ -550,77 +571,43 @@ void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numb
     }
 }
 
-void DFT(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
-    const unsigned int M = (dataList.size() / 3); //
+void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
+    const unsigned int srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
-    const float* curValue = NULL;
-    const unsigned int N = 3; // number of columns
 
-    /*
-    using a 2D matrix
-                N = 0  N = 1  N = 2
-    M = 0    ||  x0  |  y0  |  z0  ||
-    M = 1    ||  x1  |  y1  |  z1  ||
-    M = 2    ||  x2  |  y2  |  z2  ||
-    M = :    ||  ::  |  ::  |  ::  ||
-    M = M-1  || xM-1 | yM-1 | zM-1 ||
-    */
-    for (unsigned int m = start; m < ends; m++) { //row; calculate only from start to end, which will make that every thread calc nearly the same
-        for (unsigned int n = 0; n < N; n++) { //column
-            tempRe = 0;
-            tempIm = 0;
-            for (unsigned int k = 0; (k < M); k++) { //sum of all row
-                for (unsigned int j = 0; (j < N); j++) { //sum of all column at the current row
-                    curValue = &dataList[k * 3 + j];
-                    tempRe += *curValue * ( std::cos( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
-                    tempIm += *curValue * ( std::sin( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
-                }
-            }
-            //std::cout << std::setprecision(32) << tempRe << "  --  " << tempIm << std::endl;
-            threadOutputList.push_back(tempRe); //save the real part into the threadList vector
-            threadOutputList.push_back(tempIm); //save the imaginary part into the threadList vector
+    for (unsigned int s = start; s < ends; s++) {
+        tempRe = 0;
+        tempIm = 0;
+        for (unsigned int k = 0; k < srcSize; k++) {
+            tempRe += std::cos( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
+            tempIm += std::sin( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
         }
+        threadOutputList.push_back(std::sqrt(tempIm * tempIm + tempRe * tempRe));  //norm of real and imaginary
     }
 }
 
-void DFTwithBackup(const std::vector<float>& dataList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
-    std::ofstream tempFile;
-    tempFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
+    std::ofstream backupFile;
+    backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
 
-    const unsigned int M = (dataList.size() / 3); //
+    const unsigned int srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
-    const float* curValue = NULL;
-    const unsigned int N = 3; // number of columns
+    float result = 0;
 
-    /*
-    using a 2D matrix
-                N = 0  N = 1  N = 2
-    M = 0    ||  x0  |  y0  |  z0  ||
-    M = 1    ||  x1  |  y1  |  z1  ||
-    M = 2    ||  x2  |  y2  |  z2  ||
-    M = :    ||  ::  |  ::  |  ::  ||
-    M = M-1  || xM-1 | yM-1 | zM-1 ||
-    */
-    for (unsigned int m = start; m < ends; m++) { //row; calculate only from start to end, which will make that every thread calc nearly the same
-        for (unsigned int n = 0; n < N; n++) { //column
-            tempRe = 0;
-            tempIm = 0;
-            for (unsigned int k = 0; (k < M); k++) { //sum of all row
-                for (unsigned int j = 0; (j < N); j++) { //sum of all column at the current row
-                    curValue = &dataList[k * 3 + j];
-                    tempRe += *curValue * ( std::cos( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
-                    tempIm += *curValue * ( std::sin( ((-2) * M_PI * m * k / M) + ((-2) * M_PI * n * j / N)) ); //DFT without complex numbers instead using the sin/cos version of it
-                }
-            }
-            tempFile.write((char*)& tempRe, sizeof(float));
-            tempFile.write((char*)& tempIm, sizeof(float));
-            threadOutputList.push_back(tempRe); //save the real part into the threadList vector
-            threadOutputList.push_back(tempIm); //save the imaginary part into the threadList vector
+    for (unsigned int s = start; s < ends; s++) {
+        tempRe = 0;
+        tempIm = 0;
+        for (unsigned int k = 0; k < srcSize; k++) {
+            tempRe += std::cos( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
+            tempIm += std::sin( 2 * M_PI * dataList[k] * reciList[s] + dataList[k + 1] * reciList[s + 1] + dataList[k + 2] * reciList[s + 2]);
         }
+        result = std::sqrt(tempIm * tempIm + tempRe * tempRe); //norm of real and imaginary
+        backupFile.write((char*)& result, sizeof(float));
+        threadOutputList.push_back(result);
     }
-    tempFile.close();
+    backupFile.close();
 }
 
 const std::string getProgressBar(const float percent) { //progressbar with numbers after the decimal point
@@ -656,7 +643,7 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
         #endif
         tmpCurRawProgress = 0;
         for(auto curVec : outputList) {
-            tmpCurRawProgress += (curVec.size() / 6);
+            tmpCurRawProgress += (curVec.size());
         }
         if (tmpCurRawProgress != curRawProgress) { //show only if the progress has changed
             curRawProgress = tmpCurRawProgress;
@@ -690,46 +677,38 @@ const std::string getCurrentTime() { //return the current time. format: year_mon
     return buf;
 }
 
-bool saveToFile(const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
+bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
     std::string DFToutputFile;
     DFToutputFile = DFToutputPath + "DFToutput_" + getCurrentTime() + ".txt"; //filename with current time
 
-    std::ofstream outputfile;
-    outputfile.open(DFToutputFile, std::ofstream::out | std::ofstream::trunc); //ios::trunc just for better viewing (is default)
-    if (!outputfile.good()) {
+    std::ofstream outputFile;
+    outputFile.open(DFToutputFile, std::ofstream::out | std::ofstream::trunc); //ios::trunc just for better viewing (is default)
+    if (!outputFile.good()) {
         std::cout << "ERROR: saving DFT data" << std::endl; //status msg
         std::cout << "\tError while creating output file." << std::endl; //status msg
         return false;
     }
 
     std::cout << "Note: saving DFT results to " << DFToutputFile << std::endl;
+    outputFile << "X\tY\tZ\tDFT" << std::endl;
 
-    unsigned int finishValue = 0;
-    for(auto threadList : outputList) { //loop through all thread lists
-        finishValue += (threadList.size() / 6);
-    }
-
+    unsigned int finishValue = (reciList.size() / 3);
     unsigned int curRawProgress = 0;
-    std::vector<float> tempSave;
+
     for(auto threadList : outputList) { //loop through all thread lists
         for(auto curValue : threadList) { //loop through all numbers of the thread list
-            tempSave.push_back(curValue); //save temporary all numbers for one point before writing into file
-            if (tempSave.size() == 6) { //write into file
-                outputfile << std::setprecision(32) << "(" << tempSave[0] << ", " << tempSave[1] << ") ";
-                outputfile << std::setprecision(32) << "(" << tempSave[2] << ", " << tempSave[3] << ") ";
-                outputfile << std::setprecision(32) << "(" << tempSave[4] << ", " << tempSave[5] << ")" << std::endl;
-                tempSave.clear();
-                curRawProgress++;
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
-                if (!outputfile.good()) {
-                    std::cout << "ERROR: saving DFT data" << std::endl; //status msg
-                    std::cout << "\tError while writing into output file." << std::endl; //status msg
-                    return false;
-                }
+            curRawProgress++;
+            std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
+            outputFile << std::setprecision(32) << reciList[(curRawProgress - 1) * 3] << "\t" << reciList[(curRawProgress - 1) * 3 + 1] << "\t" << reciList[(curRawProgress - 1) * 3 + 2];
+            outputFile << std::setprecision(32) << "\t" << curValue << "\n";
+            if (!outputFile.good()) {
+                std::cout << "ERROR: saving DFT data" << std::endl; //status msg
+                std::cout << "\tError while writing into output file." << std::endl; //status msg
+                return false;
             }
         }
     }
     std::cout << std::endl;
-    outputfile.close();
+    outputFile.close();
     return true;
 }
