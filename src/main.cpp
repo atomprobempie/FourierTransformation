@@ -1,6 +1,7 @@
 /*
     TODO:
         restart from temp file
+        recidistance check for float
 */
 /*
     Developer:
@@ -53,14 +54,14 @@ const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
 bool checkExportPath(std::string exportPath, bool forceCreatePath);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
-void createReciLattice(std::vector<int>& reciList, int start, int ends, int distance);
+void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
-void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
+void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
 const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
-bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
+bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 
 int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
@@ -76,9 +77,10 @@ int main(int argc, char* argv[]) {
     std::string exportPath = "export/";
     std::string backupPath = "backup/";
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
-    std::vector<int> reciList;
+    std::vector<float> reciList;
     int reciStart = -10;
     int reciEnds = 10;
+    float reciDistance = 1;
 
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
@@ -111,9 +113,10 @@ int main(int argc, char* argv[]) {
                     useBackup = false;
                 } else if (curString == "-c") { //no restarting of previous calculations
                     RestartingCalc = false;
-                } else if ( (isInt(std::string(argv[i - 2]))) && (isInt(std::string(argv[i - 1]))) && (curString == "-s") ) { //set reciprocal space minimum and maximum (distance is 1)
-                    reciStart = std::stoi( std::string(argv[i - 2]) );
-                    reciEnds = std::stoi( std::string(argv[i - 1]) );
+                } else if ( (isInt(std::string(argv[i - 3]))) && (isInt(std::string(argv[i - 2]))) && (isInt(std::string(argv[i - 1]))) && (curString == "-s") ) { //set reciprocal space minimum and maximum (distance is 1)
+                    reciStart = std::stoi( std::string(argv[i - 3]) );
+                    reciEnds = std::stoi( std::string(argv[i - 2]) );
+                    reciDistance = std::stof( std::string(argv[i - 1]) );
                 } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
                 } else if (isInt(curString)) { //try forcing using this value of threads
@@ -201,7 +204,7 @@ int main(int argc, char* argv[]) {
     //std::cout << "DONE: write source data to file" << std::endl; //status msg
 
     //create reciprocal lattice
-    createReciLattice(reciList, reciStart, reciEnds, 1);
+    createReciLattice(reciList, reciStart, reciEnds, reciDistance);
     std::cout << "Reciprocal Lattice:" << std::endl;
     std::cout << "  Start: " << reciStart << std::endl;
     std::cout << "  End: " << reciEnds << std::endl;
@@ -522,9 +525,6 @@ bool checkExportPath(std::string exportPath, bool forceCreatePath) {
 
 bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NOTE: changes dataList
     std::ifstream inputFile;
-    uint32_t number;
-    float floatnum;
-
     inputFile.open(path, std::ifstream::in | std::ifstream::binary);
 
     std::string tmpmsg = checkFileAccess(path, 1);
@@ -534,24 +534,21 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
         return false;
     }
     inputFile.seekg(0, inputFile.end);
-    std::streamoff finishValue = (inputFile.tellg() / 4); //4 bytes are 32 bit
+    std::streamoff dataSize = (inputFile.tellg() / 4); //4 bytes are 32 bit
     inputFile.seekg(0, inputFile.beg);
-    if (finishValue % 4 != 0) { //if there are no 4 * X bytes the file can be corrupted because the default input file has 4 number per each point
+    if (dataSize % 4 != 0) { //if there are no 4 * X bytes the file can be corrupted because the default input file has 4 number per each point
         std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
     }
-    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(float)); i++) { //instead of i++ maybe (i % 4) (but slower)
+    uint32_t number;
+    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
         //convert big endian to little endian because the input is 32bit float big endian
         #if defined __GNUC__
             number = (__builtin_bswap32(number));
         #elif defined _MSC_VER
             number = (_byteswap_ulong(number));
         #endif
-        char* pcUnsInt = (char*)&number;
-        char* pcFloatNum = (char*)&floatnum;
-        memcpy(pcFloatNum, pcUnsInt, sizeof(number));
-
         if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
-            dataList.push_back(floatnum);
+            dataList.push_back(reinterpret_cast<float&>(number));
         }
     }
     if (!inputFile.good() && !inputFile.eof()) {
@@ -563,7 +560,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
     return true;
 }
 
-void createReciLattice(std::vector<int>& reciList, int start, int ends, int distance) { //create reciprocal space
+void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance) { //create reciprocal space
     distance = 1;
 
     for (int i = start; i <= ends; i += distance) {
@@ -590,7 +587,7 @@ void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numb
     }
 }
 
-void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
+void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
     const unsigned int srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
@@ -606,7 +603,7 @@ void DFT(const std::vector<float>& dataList, const std::vector<int>& reciList, c
     }
 }
 
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<int>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
     std::ofstream backupFile;
     backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
 
@@ -696,12 +693,12 @@ const std::string getCurrentTime() { //return the current time. format: year_mon
     return buf;
 }
 
-bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
+bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath) {
     std::string DFToutputFile;
-    DFToutputFile = DFToutputPath + "DFToutput_" + getCurrentTime() + ".txt"; //filename with current time
+    DFToutputFile = DFToutputPath + "DFToutput_" + getCurrentTime() + ".pos"; //filename with current time
 
     std::ofstream outputFile;
-    outputFile.open(DFToutputFile, std::ofstream::out | std::ofstream::trunc); //ios::trunc just for better viewing (is default)
+    outputFile.open(DFToutputFile, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc); //ios::trunc just for better viewing (is default)
     if (!outputFile.good()) {
         std::cout << "ERROR: saving DFT data" << std::endl; //status msg
         std::cout << "\tError while creating output file." << std::endl; //status msg
@@ -709,7 +706,6 @@ bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector
     }
 
     std::cout << "Note: saving DFT results to " << DFToutputFile << std::endl;
-    outputFile << "X\tY\tZ\tDFT" << std::endl;
 
     unsigned int finishValue = (reciList.size() / 3);
     unsigned int curRawProgress = 0;
@@ -718,8 +714,38 @@ bool saveToFile(const std::vector<int>& reciList, const std::vector< std::vector
         for(auto curValue : threadList) { //loop through all numbers of the thread list
             curRawProgress++;
             std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
-            outputFile << std::setprecision(32) << reciList[(curRawProgress - 1) * 3] << "\t" << reciList[(curRawProgress - 1) * 3 + 1] << "\t" << reciList[(curRawProgress - 1) * 3 + 2];
-            outputFile << std::setprecision(32) << "\t" << curValue << "\n";
+
+            #if defined __GNUC__
+                float curReciValue = reciList[(curRawProgress - 1) * 3];
+                uint32_t curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curReciValue = reciList[(curRawProgress - 1) * 3 + 1];
+                curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curReciValue = reciList[(curRawProgress - 1) * 3 + 2];
+                curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+            #elif defined _MSC_VER
+                float curReciValue = reciList[(curRawProgress - 1) * 3];
+                uint32_t curConvertedValue = (_byteswap_ulong( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curReciValue = reciList[(curRawProgress - 1) * 3 + 1];
+                curConvertedValue = (_byteswap_ulong( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curReciValue = reciList[(curRawProgress - 1) * 3 + 2];
+                curConvertedValue = (_byteswap_ulong( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+
+                curConvertedValue = (_byteswap_ulong( reinterpret_cast<uint32_t&>(curValue) )); //convert little endian to big endian
+                outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
+            #endif
             if (!outputFile.good()) {
                 std::cout << "ERROR: saving DFT data" << std::endl; //status msg
                 std::cout << "\tError while writing into output file." << std::endl; //status msg
