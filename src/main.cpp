@@ -43,7 +43,6 @@
 #include <stdint.h>
 
 void getHelp();
-bool isInt(std::string input);
 void getPaths(std::string &sourcePath, std::string &exportPath);
 void correctPath(std::string& path);
 const std::string checkFileAccess(std::string path, int arg);
@@ -115,7 +114,7 @@ int main(int argc, char* argv[]) {
                     reciDistance = std::stof( std::string(argv[i - 1]) );
                 } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
-                } else if (isInt(curString)) { //try forcing using this value of threads
+                } else if (std::regex_match(curString, std::regex ("(-?)[:d:]+"))) { //try forcing using this value of threads
                     if ((std::stoi(curString) >= 1) && (std::string(argv[i - 1]) == "-t")) {
                         custThreads = std::stoi(curString);
                     }
@@ -348,7 +347,9 @@ void getHelp() { //help and info section
     std::cout << "  The source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <mass>" << std::endl;
     std::cout << "  With the Coordinates a 3D Direct Fourier Transformation will be performed (no Fast Fourier)" << std::endl;
-    std::cout << "  If no export path is given it will be exported to export/" << std::endl;
+    std::cout << "  The result is a reciprocal lattice with the log10 if the intensity." << std::endl;
+    std::cout << "  Exported as a 32bit big endian binary file with the file ending .pos and this format:" << std::endl;
+    std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <log10 of intensity>" << std::endl;
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "  You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
