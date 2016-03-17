@@ -1,5 +1,6 @@
 /import/*
 /export/*
+/backup/*
 /bin/*
 *.exe
 /obj/*

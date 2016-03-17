@@ -44,6 +44,7 @@
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
+bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance);
 void correctPath(std::string& path);
 const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
@@ -73,9 +74,9 @@ int main(int argc, char* argv[]) {
     std::string backupPath = "backup/";
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::vector<float> reciList;
-    int reciStart = -10;
-    int reciEnds = 10;
-    float reciDistance = 1;
+    int reciStart;
+    int reciEnds;
+    float reciDistance;
 
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
@@ -89,6 +90,15 @@ int main(int argc, char* argv[]) {
         //path managing
         if (argc == 1) { //if no paths are given with the arguments
             getPaths(sourcePath, exportPath); //ask for import and export path
+            if (sourcePath == "?help") { //show help
+                getHelp();
+                return 0;
+            }
+            if (!getReciprocalValues(reciStart, reciEnds, reciDistance)) { //set reciprocal lattice values
+                std::cout << "User canceled." << std::endl; //status msg
+                std::cout << "CLOSED" << std::endl; //status msg
+                return 1;
+            }
         } else {
             sourcePath = argv[1]; //source path is the first argument
             if (sourcePath == "?help") { //show help
@@ -98,7 +108,11 @@ int main(int argc, char* argv[]) {
 
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
-                if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
+                if ( std::regex_match(curString, std::regex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
+                    reciStart = std::stoi( std::string(argv[i - 3]) );
+                    reciEnds = std::stoi( std::string(argv[i - 2]) );
+                    reciDistance = std::stof( std::string(argv[i - 1]) );
+                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
                     exportPath = argv[i];
                 } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) { //backup path
                     backupPath = argv[i];
@@ -108,27 +122,18 @@ int main(int argc, char* argv[]) {
                     useBackup = false;
                 } else if (curString == "-c") { //no restarting of previous calculations
                     RestartingCalc = false;
-                } else if ( std::regex_match(argv[i - 3], std::regex ("(-?)[:d:]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[:d:]+")) && std::regex_match(argv[i - 1], std::regex ("((-?)[:d:]+)(\\.(([:d:]+)?))?((e|E)(-?)[:d:]+)?")) && (curString == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
-                    reciStart = std::stoi( std::string(argv[i - 3]) );
-                    reciEnds = std::stoi( std::string(argv[i - 2]) );
-                    reciDistance = std::stof( std::string(argv[i - 1]) );
                 } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
-                } else if (std::regex_match(curString, std::regex ("(-?)[:d:]+"))) { //try forcing using this value of threads
-                    if ((std::stoi(curString) >= 1) && (std::string(argv[i - 1]) == "-t")) {
+                } else if (std::regex_match(curString, std::regex ("(-?)[:d:]+")) && (std::string(argv[i - 1]) == "-t")) { //try forcing using this value of threads
+                    if (std::stoi(curString) >= 1) {
                         custThreads = std::stoi(curString);
                     }
                 }
             }
         }
-        if (sourcePath == "?help") { //show help
-            getHelp();
-            return 0;
-        }
 
-        //check reci start/ end
-        if (reciStart >= reciEnds) {
-            std::cout << "ERROR: reciprocal lattice start is not lower as the end" << std::endl; //status msg
+        if ((reciStart >= reciEnds) || (reciDistance <= 0)) {
+            std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
         }
@@ -138,11 +143,13 @@ int main(int argc, char* argv[]) {
         correctPath(exportPath);
         correctPath(backupPath);
 
+        std::cout << std::endl;
         std::cout << "Source file: " << sourcePath << std::endl;
         std::cout << "Export dir:  " << exportPath << std::endl;
         if (useBackup) {
             std::cout << "Temp dir:  " << backupPath << std::endl;
         }
+        std::cout << std::endl;
     }
 
     {
@@ -192,11 +199,6 @@ int main(int argc, char* argv[]) {
     std::cout << "\r" << getProgressBar(100); //show progress //progress is 100
     std::cout << std::endl;
     std::cout << "DONE: import data" << std::endl; //status msg
-
-    //std::cout << "START: write source data to file" << std::endl; //status msg
-    //std::cout << getProgressBar(-2) << std::endl; //show the snail
-    //save source data here if its needed
-    //std::cout << "DONE: write source data to file" << std::endl; //status msg
 
     //create reciprocal lattice
     createReciLattice(reciList, reciStart, reciEnds, reciDistance);
@@ -353,10 +355,12 @@ void getHelp() { //help and info section
     std::cout << std::endl;
     std::cout << "START WITH ARGUMENTS" << std::endl;
     std::cout << "  You can start this program even with arguments. The source file needs to be the first argument:" << std::endl;
-    std::cout << "  <source file> -e <export file> -p <temporary path> -f -b -c -s <start> <end> <distance> -o -t <threads>" << std::endl;
+    std::cout << "  <source file> -s <start> <end> <distance> -e <export file> -p <temporary path> -f -b -c -o -t <threads>" << std::endl;
     std::cout << "Source File: (required)" << std::endl;
     std::cout << "  Use as absolute path or relative path to the executable folder (use only \"/\" !)"<< std::endl;
     std::cout << "  Further if a directory has a space in it surround it with \" " << std::endl;
+    std::cout << "-s Set reciprocal space: (required)" << std::endl;
+    std::cout << "  If -s is set three numbers must follow after it, start, end and the distance of the reciprocal space." << std::endl;
     std::cout << "-e Export File: (optional)" << std::endl;
     std::cout << "  The result will be exported to the given path or if no path is given to export/" << std::endl;
     std::cout << "  The file is for humans readable and has this structure:" << std::endl;
@@ -372,15 +376,13 @@ void getHelp() { //help and info section
     std::cout << "  If something is gone wrong it can not be continue then." << std::endl;
     std::cout << "-c Not continue calculation: (optional)" << std::endl;
     std::cout << "  If -o is set it it will not try to continue a saved, started calculation." << std::endl;
-    std::cout << "-s Set reciprocal space" << std::endl;
-    std::cout << "  If -s is set three numbers must follow after it, start, end and the distance of the reciprocal space." << std::endl;
     std::cout << "-o Automatically close the program: (optional)" << std::endl;
-    std::cout << "  If -o is set it will close automatically the program." << std::endl;
+    std::cout << "  If -o is set it will close automatically the program at the end." << std::endl;
     std::cout << "-t Thread numbers: (optional)" << std::endl;
     std::cout << "  If -t is set a number must follow after it, it tries to force using this value of threads." << std::endl;
     std::cout << "  At least the minimum is one threads." << std::endl;
     std::cout << std::endl;
-    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -e \"my export\"/path/ -p temporary/path/ -f -b -c -s -20 20 1 -o -t 24" << std::endl;
+    std::cout << "Example: ./FourierTransformation \"my import\"/path/to/source.pos -s -20 20 1 -e \"my export\"/path/ -p temporary/path/ -f -b -c -o -t 24" << std::endl;
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
 }
 
@@ -399,6 +401,51 @@ void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for impo
         exportPath = "export/";
     }
     std::cout << std::endl;
+}
+
+bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance) {
+    std::cout << "Please set the reciprocal lattice values: (quit for close the program)" << std::endl;
+
+    bool correctInput = false;
+    while (!correctInput) {
+        std::cout << "Start: ";
+        std::string input;
+        std::getline(std::cin, input);
+        if (input == "quit") {
+            return false;
+        }
+        if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
+            correctInput = true;
+            reciStart = std::stoi(std::string(input));
+        }
+    }
+    correctInput = false;
+    while (!correctInput) {
+        std::cout << "Ends: ";
+        std::string input;
+        std::getline(std::cin, input);
+        if (input == "quit") {
+            return false;
+        }
+        if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
+            correctInput = true;
+            reciEnds = std::stoi(input);
+        }
+    }
+    correctInput = false;
+    while (!correctInput) {
+        std::cout << "Distance: ";
+        std::string input;
+        std::getline(std::cin, input);
+        if (input == "quit") {
+            return false;
+        }
+        if (std::regex_match(input, std::regex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[[:d:]]+)?"))) {
+            correctInput = true;
+            reciDistance = std::stof(input);
+        }
+    }
+    return true;
 }
 
 void correctPath(std::string& path) {
@@ -510,7 +557,7 @@ bool checkExportPath(std::string exportPath, bool forceCreatePath) {
     return true;
 }
 
-bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NOTE: changes dataList
+bool readInputFile(const std::string path, std::vector<float>& dataList) {
     std::ifstream inputFile;
     inputFile.open(path, std::ifstream::in | std::ifstream::binary);
 
@@ -548,11 +595,9 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) { ///NO
 }
 
 void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance) { //create reciprocal space
-    distance = 1;
-
-    for (int i = start; i <= ends; i += distance) {
-        for (int k = start; k <= ends; k += distance) {
-            for (int o = start; o <= ends; o += distance) {
+    for (float i = start; i <= ends; i += distance) {
+        for (float k = start; k <= ends; k += distance) {
+            for (float o = start; o <= ends; o += distance) {
                 reciList.push_back(i);
                 reciList.push_back(k);
                 reciList.push_back(o);
@@ -628,7 +673,7 @@ const std::string getProgressBar(const float percent) { //progressbar with numbe
     progressBar.width((percent + 4) / 2);
     progressBar.fill('=');
     progressBar << " ";
-    progressBar << secondPart; //smelt both parts to one
+    progressBar << secondPart; //melt both parts to one
     return progressBar.str();
 }
 
