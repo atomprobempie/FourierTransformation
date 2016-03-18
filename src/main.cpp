@@ -206,51 +206,53 @@ int main(int argc, char* argv[]) {
     std::cout << "Reciprocal Lattice:" << std::endl;
     std::cout << "  Start: " << reciStart << std::endl;
     std::cout << "  End: " << reciEnds << std::endl;
-
-    //set the max threads which can be used; inclusive the main thread
-    unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
-    if (custThreads >= 2) {
-        tmpMaxThreads = custThreads;
-    }
-    if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
-        if (tmpMaxThreads > ((reciList.size() / 3) / 2)) { //if using more threads as indices
-            tmpMaxThreads = ((reciList.size() / 3) / 2); //use at least indices / 2 threads
-        }
-    } else { //if it was not possible use at least one extra thread
-        tmpMaxThreads = 2;
-    }
-    const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
-    std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
-
-    //init the outputlist
-    for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
-        outputList.push_back(std::vector<float>());
-    }
+    std::cout << "  Distance: " << reciDistance << std::endl;
 
     {
         //DFT
+        //set the max threads which can be used; inclusive the main thread
+        unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
+        ///optimization possible
+        if (custThreads >= 2) {
+            tmpMaxThreads = custThreads;
+        }
+        if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
+            if (tmpMaxThreads > ((reciList.size() / 3) / 2)) { //if using more threads as indices
+                tmpMaxThreads = ((reciList.size() / 3) / 2); //use at least indices / 2 threads
+            }
+        } else { //if it was not possible use at least one extra thread
+            tmpMaxThreads = 2;
+        }
+        const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
+        std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
+
         std::vector<unsigned int> boundsList; //init the bounds vector
         calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList
 
-        //init the temp paths
+        //init the temp paths and save backup config file
         backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
         std::ofstream backupConfigFile;
         backupConfigFile.open(backupPathList[0], std::ofstream::out);
         backupConfigFile << getHash(sourcePath) << std::endl;
+        backupConfigFile << reciStart << std::endl << reciEnds << std::endl << reciDistance << std::endl;
         for (unsigned int i = 0; i < (boundsList.size() - 1); i++) {
-                std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
+            std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
             backupPathList.push_back(backupPath + curFileName);
             backupConfigFile << curFileName << std::endl;
         }
         backupConfigFile.close();
 
+        //init the outputlist
+        for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
+            outputList.push_back(std::vector<float>());
+        }
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
         //configure threads
         for (unsigned int i = 1; i < maxThreads; ++i) {
             if (useBackup) {
-                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
+                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
             } else {
-                threads[i - 1] = std::thread(DFT, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
+                threads[i - 1] = std::thread(DFT, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
             }
         }
         std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (reciList.size() / 3), 2, 3); //DFTprogress thread
@@ -632,9 +634,11 @@ void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numb
     boundsList.push_back(0); //start bound is 0
     for (unsigned int i = 1; i <= cores; i++) {
         if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
-            boundsList.push_back(boundsList[i - 1] + partsize + 1);
+            boundsList.push_back(boundsList[i - 1] + partsize + 1); //end value
+            boundsList.push_back(boundsList[i - 1] + partsize + 1); //start value (last wont used)
         } else {
-            boundsList.push_back(boundsList[i - 1] + partsize);
+            boundsList.push_back(boundsList[i - 1] + partsize); //end value
+            boundsList.push_back(boundsList[i - 1] + partsize); //start value (last wont used)
         }
     }
 }
