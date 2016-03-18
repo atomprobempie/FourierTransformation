@@ -635,10 +635,10 @@ void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numb
     for (unsigned int i = 1; i <= cores; i++) {
         if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
             boundsList.push_back(boundsList[i - 1] + partsize + 1); //end value
-            boundsList.push_back(boundsList[i - 1] + partsize + 1); //start value (last wont used)
+            boundsList.push_back(boundsList[i]); //start value (last wont used)
         } else {
             boundsList.push_back(boundsList[i - 1] + partsize); //end value
-            boundsList.push_back(boundsList[i - 1] + partsize); //start value (last wont used)
+            boundsList.push_back(boundsList[i]); //start value (last wont used)
         }
     }
 }
