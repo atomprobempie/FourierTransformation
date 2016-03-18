@@ -49,6 +49,7 @@ void correctPath(std::string& path);
 const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
 bool checkExportPath(std::string exportPath, bool forceCreatePath);
+uint32_t getHash(const std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
 void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
@@ -232,15 +233,22 @@ int main(int argc, char* argv[]) {
         calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList
 
         //init the temp paths
+        backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
+        std::ofstream backupConfigFile;
+        backupConfigFile.open(backupPathList[0], std::ofstream::out);
+        backupConfigFile << getHash(sourcePath) << std::endl;
         for (unsigned int i = 0; i < (boundsList.size() - 1); i++) {
-            backupPathList.push_back(backupPath + std::to_string(boundsList[i]) + ".tmp");
+                std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
+            backupPathList.push_back(backupPath + curFileName);
+            backupConfigFile << curFileName << std::endl;
         }
+        backupConfigFile.close();
 
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
         //configure threads
         for (unsigned int i = 1; i < maxThreads; ++i) {
             if (useBackup) {
-                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i]); //std::ref forces the input as reference because thread doesnt allow this normally
+                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
             } else {
                 threads[i - 1] = std::thread(DFT, std::ref(dataList), std::ref(reciList), boundsList[i], boundsList[i + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
             }
@@ -253,7 +261,7 @@ int main(int argc, char* argv[]) {
         time_t start, end;
         time(&start);
         if (useBackup) {
-            DFTwithBackup(dataList, reciList, boundsList[0], boundsList[1], outputList[0], backupPathList[0]);
+            DFTwithBackup(dataList, reciList, boundsList[0], boundsList[1], outputList[0], backupPathList[1]);
         } else {
             DFT(dataList, reciList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         }
@@ -316,7 +324,7 @@ int main(int argc, char* argv[]) {
             bool cleanUp = true; //check var for checking if the cleaning up was succeed
             std::cout << "START: clean up temporary files" << std::endl; //status msg
             for (auto curPath : backupPathList) { //remove all backup files
-                cleanUp = ((remove(curPath.c_str()) == 0) && cleanUp);
+                cleanUp = ((std::remove(curPath.c_str()) == 0) && cleanUp);
             }
             if (!cleanUp) {
                 std::cout << "ERROR: clean up temporary files" << std::endl; //status msg
@@ -555,6 +563,18 @@ bool checkExportPath(std::string exportPath, bool forceCreatePath) {
         }
     }
     return true;
+}
+
+uint32_t getHash(const std::string path) { //small working hash function
+    std::ifstream inputFile;
+    inputFile.open(path, std::ifstream::in | std::ifstream::binary);
+    uint32_t number;
+    uint32_t hashValue;
+    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
+        hashValue ^= (number ^ i);
+    }
+    inputFile.close();
+    return hashValue;
 }
 
 bool readInputFile(const std::string path, std::vector<float>& dataList) {
