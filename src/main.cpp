@@ -3,6 +3,7 @@
         restart from temp file
         catch empty input arguments
         fix progressbar mistake if the recidistance cannot match the start end, e.g. 20 25 3
+        delete backup dir too if it was created
 */
 /*
     Developer:
@@ -113,9 +114,9 @@ int main(int argc, char* argv[]) {
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
                 if ( std::regex_match(curString, std::regex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
-                    reciStart = std::stoi( std::string(argv[i - 3]) );
-                    reciEnds = std::stoi( std::string(argv[i - 2]) );
-                    reciDistance = std::stof( std::string(argv[i - 1]) );
+                    reciStart = std::stoi( std::string(argv[i - 2]) );
+                    reciEnds = std::stoi( std::string(argv[i - 1]) );
+                    reciDistance = std::stof( std::string(curString) );
                 } else if (std::string(argv[i - 1]) == "-e") { //export path
                     exportPath = argv[i];
                 } else if (std::string(argv[i - 1]) == "-p") { //backup path
