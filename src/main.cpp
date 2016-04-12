@@ -1,6 +1,8 @@
 /*
     TODO:
         restart from temp file
+        catch empty input arguments
+        fix progressbar mistake if the recidistance cannot match the start end, e.g. 20 25 3
 */
 /*
     Developer:
@@ -41,13 +43,14 @@
 #include <vector>
 #include <iomanip>
 #include <stdint.h>
+#include <FileStatsStruct.h>
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
 bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance);
 void correctPath(std::string& path);
-const std::string checkFileAccess(std::string path, int arg);
 const bool createDir(std::string path);
+bool checkBackUpPath(std::string backupPath);
 bool checkExportPath(std::string exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
@@ -113,9 +116,9 @@ int main(int argc, char* argv[]) {
                     reciStart = std::stoi( std::string(argv[i - 3]) );
                     reciEnds = std::stoi( std::string(argv[i - 2]) );
                     reciDistance = std::stof( std::string(argv[i - 1]) );
-                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-e") ) { //export path
+                } else if (std::string(argv[i - 1]) == "-e") { //export path
                     exportPath = argv[i];
-                } else if (((curString[curString.size() - 1] == '/') || (curString[curString.size() - 1] == '\\')) && (std::string(argv[i - 1]) == "-p") ) { //backup path
+                } else if (std::string(argv[i - 1]) == "-p") { //backup path
                     backupPath = argv[i];
                 } else if (curString == "-f") { //force create path
                     forceCreatePath = true;
@@ -141,8 +144,17 @@ int main(int argc, char* argv[]) {
 
         //correct possible input mistakes
         correctPath(sourcePath);
+        if (sourcePath[sourcePath.length() - 1] == '/') {
+            sourcePath.erase(sourcePath.size() - 1,1);
+        }
         correctPath(exportPath);
+        if (exportPath[exportPath.size() - 1] != '/') {
+            exportPath = exportPath + '/';
+        }
         correctPath(backupPath);
+        if (backupPath[backupPath.size() - 1] != '/') {
+            backupPath = backupPath + '/';
+        }
 
         std::cout << std::endl;
         std::cout << "Source file: " << sourcePath << std::endl;
@@ -156,36 +168,26 @@ int main(int argc, char* argv[]) {
     {
         //check paths
         std::cout << "START: checking given paths" << std::endl; //status msg
-        std::string tmpmsg = checkFileAccess(sourcePath, 1);
-        if (tmpmsg != "") { //check source file path, if a error is returned
-            std::cout << "ERROR: source file is " << tmpmsg << std::endl; //status msg
+        FileStatsStruct fSS(sourcePath);
+        if ((fSS.existing != 0) || (fSS.readable != 0)) { //check source file path, if a error is returned
+            std::string curMsg;
+            if (fSS.existing != 0) {
+                curMsg = fSS.existingStr;
+            } else {
+                curMsg = fSS.readableStr;
+            }
+            std::cout << "ERROR: source file is " << curMsg << "." << std::endl;
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
         }
 
         if (checkExportPath(exportPath, forceCreatePath) == false) {
             std::cout << "CLOSED" << std::endl; //status msg
-            return -1;
+            return 1;
         }
+
         if (useBackup) {
-            if ((_access_s(backupPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of backup path
-                std::cout << "Note: backup path is not existing." << std::endl; //status msg
-                std::cout << "START: creating backup directory" << std::endl; //status msg
-                if (!createDir(backupPath)) { //create directory
-                    std::cout << "ERROR: creating backup directory" << std::endl; //status msg
-                    std::cout << "WARNING: backup backup is disabled"; //status msg
-                    useBackup = false;
-                } else {
-                    std::cout << "DONE: Creating backup directory" << std::endl; //status msg
-                }
-            } else { //is existing
-                tmpmsg = checkFileAccess(backupPath, 2); //check exist and write access, returns an error reason if an error occurred
-                if (tmpmsg != "") {
-                    std::cout << "ERROR: backup path is " << tmpmsg << std::endl; //status msg
-                    std::cout << "WARNING: backup backup is disabled"; //status msg
-                    useBackup = false;
-                }
-            }
+            useBackup = checkBackUpPath(backupPath);
         }
         std::cout << "DONE: checking given paths" << std::endl; //status msg
     }
@@ -200,6 +202,9 @@ int main(int argc, char* argv[]) {
     std::cout << "\r" << getProgressBar(100); //show progress //progress is 100
     std::cout << std::endl;
     std::cout << "DONE: import data" << std::endl; //status msg
+
+    uint32_t sourceHash = getHash(sourcePath);
+    //std::cout << isBackup(sourceHash, backupPath);
 
     //create reciprocal lattice
     createReciLattice(reciList, reciStart, reciEnds, reciDistance);
@@ -227,7 +232,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
 
         std::vector<unsigned int> boundsList; //init the bounds vector
-        calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList
+        calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList, every thread get his own area
 
         //init the temp paths and save backup config file
         backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
@@ -235,7 +240,7 @@ int main(int argc, char* argv[]) {
         backupConfigFile.open(backupPathList[0], std::ofstream::out);
         backupConfigFile << getHash(sourcePath) << std::endl;
         backupConfigFile << reciStart << std::endl << reciEnds << std::endl << reciDistance << std::endl;
-        for (unsigned int i = 0; i < (boundsList.size() - 1); i++) {
+        for (unsigned int i = 0; i < (boundsList.size() - 1); i +=2) {
             std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
             backupPathList.push_back(backupPath + curFileName);
             backupConfigFile << curFileName << std::endl;
@@ -282,32 +287,10 @@ int main(int argc, char* argv[]) {
         bool userCancel = false;
         while (!userCancel) { //as long its done or user canceled
             std::cout << "START: saving DFT data" << std::endl; //status msg
-            std::string tmpmsg = checkFileAccess(exportPath, 2); //check exist and write access, returns an error reason if an error occurred
-            if (tmpmsg != "") { //if theres an error
-                std::cout << "ERROR: saving DFT data" << std::endl; //status msg
-                std::cout << "\texport path is " << tmpmsg << std::endl; //status msg
-                std::cout << "Please choose another path. ?cancel for abort saving results.";
 
-                std::cout << "\tIf you do not set an export path, the export folder in your execution folder will be used." << std::endl;
-                std::cout << "Export path: ";
-                std::getline(std::cin, exportPath);
-                std::cin.get(); //"eat" the return key
-                if (exportPath == "") { //if no export path, use default
-                    exportPath = "export/";
-                }
-                std::cout << std::endl;
-                if (exportPath == "?cancel") { //user cancel
-                    std::cout << "User canceled." << std::endl; //status msg
-                    std::cout << "CLOSED" << std::endl; //status msg
-                    return 1;
-                }
-
-                correctPath(exportPath); //correct possible input mistakes
-                std::cout << "Export dir:  " << exportPath << std::endl; //status msg
-                if (checkExportPath(exportPath, forceCreatePath) == false) { //check and create if needed export path
-                    std::cout << "ERROR: saving DFT data" << std::endl; //status msg
-                    continue;
-                }
+            if (checkExportPath(exportPath, forceCreatePath) == false) { //check and create if needed export path
+                std::cout << "CLOSED" << std::endl; //status msg
+                return 1;
             }
 
             int maxTries = 2;
@@ -359,7 +342,7 @@ void getHelp() { //help and info section
     std::cout << "  The source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <mass>" << std::endl;
     std::cout << "  With the Coordinates a 3D Direct Fourier Transformation will be performed (no Fast Fourier)" << std::endl;
-    std::cout << "  The result is a reciprocal lattice with the log10 if the intensity." << std::endl;
+    std::cout << "  The result is a reciprocal lattice with the log10 of the intensity." << std::endl;
     std::cout << "  Exported as a 32bit big endian binary file with the file ending .pos and this format:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <log10 of intensity>" << std::endl;
     std::cout << std::endl;
@@ -474,45 +457,6 @@ void correctPath(std::string& path) {
     }
 }
 
-const std::string checkFileAccess(std::string path, int arg) { //arg = 1: read access; arg = 2: write access; arg = 3: read & write access
-    int accres;
-
-    //check exist
-    accres = _access_s(path.c_str(), F_OK);
-    if (accres != 0) {
-        if (errno == ENOENT) {
-            return "not existing.";
-        } else if (errno == EACCES) {
-            return "not accessible.";
-        } else {
-            return "not accessible.";
-        }
-    }
-
-    //check read
-    if (arg & 1) {
-        accres = _access_s(path.c_str(), R_OK);
-        if (accres != 0) {
-            return "not readable (access denied).";
-        }
-    }
-
-    //check write
-    if (arg & 2) {
-        accres = _access_s(path.c_str(), W_OK);
-        if (accres != 0) {
-            if (errno == EACCES) {
-                return "not writable (access denied).";
-            } else if (errno == EROFS) {
-                return "not writable (read-only filesystem).";
-            } else {
-                return "not writable.";
-            }
-        }
-    }
-    return ""; //no error detected
-}
-
 const bool createDir(std::string path) {
     std::string curPath = path;
     size_t pos = path.find("/");
@@ -537,31 +481,93 @@ const bool createDir(std::string path) {
     return true;
 }
 
+bool checkBackUpPath(std::string backupPath) {
+    FileStatsStruct fSS(backupPath);
+    if ((fSS.existing != 0) && (fSS.existingErrno == ENOENT)) { //check existing of backup path
+        std::cout << "Note: backup path is not existing." << std::endl; //status msg
+        std::cout << "START: creating backup directory" << std::endl; //status msg
+        if (!createDir(backupPath)) { //create directory
+            std::cout << "ERROR: creating backup directory" << std::endl; //status msg
+            std::cout << "WARNING: backup is disabled"; //status msg
+            return false;
+        } else {
+            std::cout << "DONE: Creating backup directory" << std::endl; //status msg
+            fSS = FileStatsStruct(backupPath); //refresh informations
+        }
+    }
+    if ((fSS.existing != 0) || (fSS.writeable != 0)) { //check source file path, if an error was returned
+        std::string curMsg;
+        if (fSS.existing != 0) {
+            curMsg = fSS.existingStr;
+        } else {
+            curMsg = fSS.writeableStr;
+        }
+        std::cout << "ERROR: backup path is " << curMsg << "." << std::endl;
+        std::cout << "WARNING: backup is disabled"; //status msg
+        return false;
+    }
+    return true;
+}
+
 bool checkExportPath(std::string exportPath, bool forceCreatePath) {
-    if ((_access_s(exportPath.c_str(), F_OK) != 0) && (errno == ENOENT)) { //check existing of export path
-        std::cout << "Note: export path is not existing." << std::endl; //status msg
-        if (!forceCreatePath) { //no forcing creation of export path
-            std::cout << "Should the file created? [y/n] (no will abort all pending operations and close the program)" << std::endl;
-            char tmpchar;
-            std::cin >> tmpchar;
-            std::cin.get(); //"eat" the return key
-            if (tmpchar != 'y') {
-                std::cout << "User canceled." << std::endl; //status msg
-                std::cout << "CLOSED" << std::endl; //status msg
-                return 1;
+    bool pathIsOk = false;
+    while (!pathIsOk) {
+        FileStatsStruct fSS(exportPath);
+        if ((fSS.existing != 0) && (fSS.existingErrno == ENOENT)) { //check existing
+            std::cout << "Note: export path is " << fSS.existingStr << "." << std::endl; //status msg
+            if (!forceCreatePath) { //no forcing creation of export path
+                bool correctInput = false;
+                while (!correctInput) {
+                    std::cout << "Should the file created? [y/n] (no will abort all pending operations and close the program)" << std::endl;
+                    char tmpchar;
+                    std::cin >> tmpchar;
+                    std::cin.get(); //"eat" the return key
+                    if (tmpchar == 'n') {
+                        std::cout << "User canceled." << std::endl; //status msg
+                        return false;
+                    } else if (tmpchar == 'y') {
+                        correctInput = true;
+                    }
+                }
+            }
+            std::cout << "START: creating export directory" << std::endl; //status msg
+            if (!createDir(exportPath)) { //create directory
+                std::cout << "ERROR: creating export directory" << std::endl; //status msg
+            } else {
+                std::cout << "DONE: creating export directory" << std::endl; //status msg
+                fSS = FileStatsStruct(exportPath);
             }
         }
-        std::cout << "START: creating export directory" << std::endl; //status msg
-        if (!createDir(exportPath)) { //create directory
-            std::cout << "ERROR: creating export directory" << std::endl; //status msg
-            return false;
-        }
-        std::cout << "DONE: Creating export directory" << std::endl; //status msg
-    } else { //is existing
-        std::string tmpmsg = checkFileAccess(exportPath, 2); //check exist and write access, returns an error reason if an error occurred
-        if (tmpmsg != "") {
-            std::cout << "ERROR: export path is " << tmpmsg << std::endl; //status msg
-            return false;
+
+        if ((fSS.existingErrno != 0) || (fSS.writeable != 0)) { //check source directory path: writeable, directory type
+            std::string curMsg;
+            if (fSS.existingErrno != 0) { //existing but maybe not accessable
+                curMsg = fSS.existingStr;
+            } else if (fSS.writeable != 0) { //not writeable
+                curMsg = fSS.writeableStr;
+            }
+            std::cout << "ERROR: export path is " << curMsg << "." << std::endl;
+            std::cout << "Please choose another path. ?cancel for abort saving results.";
+            std::cout << "\tIf you do not set an export path, the export folder in your execution folder will be used." << std::endl;
+            std::cout << "Export path: ";
+            std::getline(std::cin, exportPath);
+            std::cin.get(); //"eat" the return key
+            std::cout << std::endl;
+            if (exportPath == "") { //if no export path, use default
+                exportPath = "export/";
+            }
+            if (exportPath == "?cancel") { //user cancel
+                std::cout << "User canceled." << std::endl; //status msg
+                return false;
+            }
+
+            correctPath(exportPath); //correct possible input mistakes
+            if (exportPath[exportPath.length() - 1] != '/') {
+                exportPath = exportPath + '/';
+            }
+            std::cout << "Export dir:  " << exportPath << std::endl; //status msg
+        } else {
+            pathIsOk = true;
         }
     }
     return true;
@@ -583,12 +589,21 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
     std::ifstream inputFile;
     inputFile.open(path, std::ifstream::in | std::ifstream::binary);
 
-    std::string tmpmsg = checkFileAccess(path, 1);
-    if (tmpmsg != "") {
+    FileStatsStruct fSS(path);
+    if ((fSS.existing != 0) || ((fSS.fileType & S_IFMT) != S_IFREG) || (fSS.readable != 0)) { //check source file path, if a error is returned
+        std::string curMsg;
+        if (fSS.existing != 0) {
+            curMsg = fSS.existingStr;
+        } else if ((fSS.fileType & S_IFMT) != S_IFREG) {
+            curMsg = "not a regular file";
+        } else {
+            curMsg = fSS.readableStr;
+        }
         std::cout << "ERROR: import data" << std::endl; //status msg
-        std::cout << "\timport data is " << tmpmsg << std::endl; //status msg
+        std::cout << "\timport data is " << curMsg << std::endl; //status msg
         return false;
     }
+
     inputFile.seekg(0, inputFile.end);
     std::streamoff dataSize = (inputFile.tellg() / 4); //4 bytes are 32 bit
     inputFile.seekg(0, inputFile.beg);
@@ -631,15 +646,11 @@ void createReciLattice(std::vector<float>& reciList, int start, int ends, float 
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
     unsigned int partsize = numbers / cores;
 
-    boundsList.push_back(0); //start bound is 0
-    for (unsigned int i = 1; i <= cores; i++) {
-        if (i <= (numbers % cores)) { //add one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
-            boundsList.push_back(boundsList[i - 1] + partsize + 1); //end value
-            boundsList.push_back(boundsList[i]); //start value (last wont used)
-        } else {
-            boundsList.push_back(boundsList[i - 1] + partsize); //end value
-            boundsList.push_back(boundsList[i]); //start value (last wont used)
-        }
+    unsigned int curPart = 0;
+    for (unsigned int i = 0; i < cores; i++) {
+        boundsList.push_back(curPart); //start value
+        curPart = curPart + partsize + (numbers % cores); //+ (numbers % cores) : adds one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
+        boundsList.push_back(curPart); //end value
     }
 }
 

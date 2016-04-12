@@ -14,6 +14,7 @@
 				<Compiler>
 					<Add option="-std=c++14" />
 					<Add option="-g" />
+					<Add directory="include" />
 				</Compiler>
 			</Target>
 			<Target title="Release">
@@ -24,6 +25,7 @@
 				<Compiler>
 					<Add option="-O3" />
 					<Add option="-std=c++14" />
+					<Add directory="include" />
 				</Compiler>
 			</Target>
 		</Build>
@@ -37,6 +39,8 @@
 			<Add option="-static-libgcc" />
 			<Add library="pthread" />
 		</Linker>
+		<Unit filename="include/FileStatsStruct.h" />
+		<Unit filename="src/FileStatsStruct.cpp" />
 		<Unit filename="src/main.cpp" />
 		<Extensions>
 			<code_completion />
