@@ -1,9 +1,11 @@
 /*
     TODO:
-        restart from temp file
         catch empty input arguments
-        fix progressbar mistake if the recidistance cannot match the start end, e.g. 20 25 3
+        use real tmp files type
+        use real error codes?
         delete backup dir too if it was created
+        check const in functions
+        catch to small reciprocal space
 */
 /*
     Developer:
@@ -28,6 +30,7 @@
     int R_OK = 04;
 #endif
 #include <direct.h>
+#include <dirent.h>
 #include <errno.h>
 #include <iostream>
 #include <fstream>
@@ -40,6 +43,7 @@
 #include <time.h>
 
 #define M_PI (3.141592653589793238462)
+#define floatRegex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")
 #include <cmath>
 #include <vector>
 #include <iomanip>
@@ -48,15 +52,17 @@
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
-bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance);
+void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::string& reciDistance);
 void correctPath(std::string& path);
 const bool createDir(std::string path);
 bool checkBackUpPath(std::string backupPath);
 bool checkExportPath(std::string exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
+std::string checkBackup(std::string backupPath, uint32_t hashValue, std::string reciStart, std::string reciEnds, std::string reciDistance);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
 void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance);
-void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores);
+void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads);
+bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, unsigned int ends, std::string backupPath, std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
 void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
 void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
 const std::string getProgressBar(float percent);
@@ -74,22 +80,25 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
 
     //get paths
-    std::string sourcePath;
-    std::string exportPath = "export/";
-    std::string backupPath = "backup/";
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::vector<float> reciList;
-    int reciStart;
-    int reciEnds;
-    float reciDistance;
+    int reciStartVal; //reciprocal space start
+    int reciEndsVal; //reciprocal space end
+    float reciDistanceVal; //reciprocal space distance
 
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
+    std::string sourcePath;
+    std::string exportPath = "export/";
+    std::string backupPath = "backup/";
+    std::string reciStart;
+    std::string reciEnds;
+    std::string reciDistance;
     bool forceCreatePath = false; //force creating export path
     bool useBackup = true; //enables writing current results to hard disk, to prevent crashes
-    bool RestartingCalc = true; //no restarting even if a correct temp was found
+    bool restartingCalc = true; //no restarting even if a correct temp was found
     bool autoClose = false; //closes automatically the program
-    unsigned int custThreads = 0;
+    unsigned int custThreads = 0; //custom threads value
 
     {
         //path managing
@@ -99,11 +108,7 @@ int main(int argc, char* argv[]) {
                 getHelp();
                 return 0;
             }
-            if (!getReciprocalValues(reciStart, reciEnds, reciDistance)) { //set reciprocal lattice values
-                std::cout << "User canceled." << std::endl; //status msg
-                std::cout << "CLOSED" << std::endl; //status msg
-                return 1;
-            }
+            getReciprocalValues(reciStart, reciEnds, reciDistance); //set reciprocal lattice values
         } else {
             sourcePath = argv[1]; //source path is the first argument
             if (sourcePath == "?help") { //show help
@@ -113,10 +118,10 @@ int main(int argc, char* argv[]) {
 
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
-                if ( std::regex_match(curString, std::regex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
-                    reciStart = std::stoi( std::string(argv[i - 2]) );
-                    reciEnds = std::stoi( std::string(argv[i - 1]) );
-                    reciDistance = std::stof( std::string(curString) );
+                if ( std::regex_match(curString, std::regex floatRegex) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
+                    reciStart = argv[i - 2];
+                    reciEnds = argv[i - 1];
+                    reciDistance = curString;
                 } else if (std::string(argv[i - 1]) == "-e") { //export path
                     exportPath = argv[i];
                 } else if (std::string(argv[i - 1]) == "-p") { //backup path
@@ -126,18 +131,21 @@ int main(int argc, char* argv[]) {
                 } else if (curString == "-b") { //use backup files
                     useBackup = false;
                 } else if (curString == "-c") { //no restarting of previous calculations
-                    RestartingCalc = false;
+                    restartingCalc = false;
                 } else if (curString == "-o") { //auto close at the end
                     autoClose = true;
-                } else if (std::regex_match(curString, std::regex ("(-?)[:d:]+")) && (std::string(argv[i - 1]) == "-t")) { //try forcing using this value of threads
+                } else if (std::regex_match(curString, std::regex ("[[:d:]]+")) && (std::string(argv[i - 1]) == "-t")) { //try forcing using this value of threads
                     if (std::stoi(curString) >= 1) {
                         custThreads = std::stoi(curString);
                     }
                 }
             }
         }
+        reciStartVal = std::stoi(reciStart);
+        reciEndsVal = std::stoi(reciEnds);
+        reciDistanceVal = std::stof(reciDistance);
 
-        if ((reciStart >= reciEnds) || (reciDistance <= 0)) {
+        if ((reciStartVal >= reciEndsVal) || (reciDistanceVal <= 0)) {
             std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
@@ -204,11 +212,12 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
     std::cout << "DONE: import data" << std::endl; //status msg
 
-    uint32_t sourceHash = getHash(sourcePath);
-    //std::cout << isBackup(sourceHash, backupPath);
+    std::cout << "START: generate hash" << std::endl; //status msg
+    const uint32_t sourceHash = getHash(sourcePath);
+    std::cout << "DONE: generate hash" << std::endl; //status msg
 
     //create reciprocal lattice
-    createReciLattice(reciList, reciStart, reciEnds, reciDistance);
+    createReciLattice(reciList, reciStartVal, reciEndsVal, reciDistanceVal);
     std::cout << "Reciprocal Lattice:" << std::endl;
     std::cout << "  Start: " << reciStart << std::endl;
     std::cout << "  End: " << reciEnds << std::endl;
@@ -217,43 +226,59 @@ int main(int argc, char* argv[]) {
     {
         //DFT
         //set the max threads which can be used; inclusive the main thread
-        unsigned int tmpMaxThreads = std::thread::hardware_concurrency();
-        ///optimization possible
-        if (custThreads >= 2) {
-            tmpMaxThreads = custThreads;
-        }
-        if (tmpMaxThreads != 0) { //test if it was possible to detect the max threads
-            if (tmpMaxThreads > ((reciList.size() / 3) / 2)) { //if using more threads as indices
-                tmpMaxThreads = ((reciList.size() / 3) / 2); //use at least indices / 2 threads
+            std::string backupCfgFilePath; //path to the configuration backup file
+            unsigned int maxThreads = 2; //max threads which will be supported
+            std::vector<unsigned int> boundsList;
+        if (restartingCalc && ((backupCfgFilePath = checkBackup(backupPath, sourceHash, reciStart, reciEnds, reciDistance)) != "")) {
+            std::cout << "NOTE: backup found" << std::endl; //status msg
+            std::cout << "START: loading backup" << std::endl; //status msg
+            loadBackup(boundsList, outputList, (reciList.size() / 3), backupPath, backupCfgFilePath, backupPathList, maxThreads);
+            std::cout << "DONE: loading backup" << std::endl; //status msg
+        } else { //no backup found
+            //set maxThread
+            if (custThreads >= 1) {
+                maxThreads = custThreads;
+            } else {
+                maxThreads = std::thread::hardware_concurrency();
             }
-        } else { //if it was not possible use at least one extra thread
-            tmpMaxThreads = 2;
+            //check maxThread
+            if (maxThreads != 0) {//if setting maxThreads has gone wrong OR if using more threads as indices
+                if (maxThreads > ((reciList.size() / 3) / 2)) {
+                    maxThreads = ((reciList.size() / 3) / 2); //use at least indices / 2 threads
+                }
+            } else { //if something goes wrong use at least one thread
+                maxThreads = 1;
+            }
+
+            calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList, every thread get his own area
+
+            //init the temp paths and save backup config file
+            backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
+            std::ofstream backupConfigFile;
+            backupConfigFile.open(backupPathList[0], std::ofstream::out);
+            backupConfigFile << sourceHash << std::endl;
+            backupConfigFile << reciStart << std::endl << reciEnds << std::endl << reciDistance << std::endl;
+            for (unsigned int i = 0; i < (boundsList.size() - 1); i +=2) {
+                std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
+                backupPathList.push_back(backupPath + curFileName);
+                backupConfigFile << curFileName << std::endl;
+            }
+            backupConfigFile.close();
+
+            //init the outputlist
+            for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
+                outputList.push_back(std::vector<float>());
+            }
         }
-        const unsigned int maxThreads = tmpMaxThreads; //get the max threads which will be supported
         std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
-
-        std::vector<unsigned int> boundsList; //init the bounds vector
-        calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList, every thread get his own area
-
-        //init the temp paths and save backup config file
-        backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
-        std::ofstream backupConfigFile;
-        backupConfigFile.open(backupPathList[0], std::ofstream::out);
-        backupConfigFile << getHash(sourcePath) << std::endl;
-        backupConfigFile << reciStart << std::endl << reciEnds << std::endl << reciDistance << std::endl;
-        for (unsigned int i = 0; i < (boundsList.size() - 1); i +=2) {
-            std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
-            backupPathList.push_back(backupPath + curFileName);
-            backupConfigFile << curFileName << std::endl;
-        }
-        backupConfigFile.close();
 
         //init the outputlist
         for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
             outputList.push_back(std::vector<float>());
         }
-        std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads
+
         //configure threads
+        std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads, seems to be possible even with maxThreads = 1
         for (unsigned int i = 1; i < maxThreads; ++i) {
             if (useBackup) {
                 threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
@@ -325,6 +350,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Press return to close the program."; //status msg
         std::cin.get();
     }
+    std::cout << "CLOSED" << std::endl;
     return 0;
 }
 
@@ -397,20 +423,17 @@ void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for impo
     std::cout << std::endl;
 }
 
-bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance) {
-    std::cout << "Please set the reciprocal lattice values: (quit for close the program)" << std::endl;
+void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::string& reciDistance) {
+    std::cout << "Please set the reciprocal lattice values:" << std::endl;
 
     bool correctInput = false;
     while (!correctInput) {
         std::cout << "Start: ";
         std::string input;
         std::getline(std::cin, input);
-        if (input == "quit") {
-            return false;
-        }
         if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
             correctInput = true;
-            reciStart = std::stoi(std::string(input));
+            reciStart = input;
         }
     }
     correctInput = false;
@@ -418,12 +441,9 @@ bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance) {
         std::cout << "Ends: ";
         std::string input;
         std::getline(std::cin, input);
-        if (input == "quit") {
-            return false;
-        }
         if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
             correctInput = true;
-            reciEnds = std::stoi(input);
+            reciEnds = input;
         }
     }
     correctInput = false;
@@ -431,15 +451,11 @@ bool getReciprocalValues(int& reciStart, int& reciEnds, float& reciDistance) {
         std::cout << "Distance: ";
         std::string input;
         std::getline(std::cin, input);
-        if (input == "quit") {
-            return false;
-        }
-        if (std::regex_match(input, std::regex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[[:d:]]+)?"))) {
+        if (std::regex_match(input, std::regex floatRegex)) {
             correctInput = true;
-            reciDistance = std::stof(input);
+            reciDistance = input;
         }
     }
-    return true;
 }
 
 void correctPath(std::string& path) {
@@ -578,12 +594,97 @@ uint32_t getHash(const std::string path) { //small working hash function
     std::ifstream inputFile;
     inputFile.open(path, std::ifstream::in | std::ifstream::binary);
     uint32_t number;
-    uint32_t hashValue;
+    uint32_t hashValue = 0;
     for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
         hashValue ^= (number ^ i);
     }
     inputFile.close();
     return hashValue;
+}
+
+std::string checkBackup(std::string backupPath, uint32_t hashValue, std::string reciStart, std::string reciEnds, std::string reciDistance) {
+    std::vector<std::string> ctempList;
+    struct stat sb;
+    struct dirent* curPartDir;
+    DIR* directory;
+
+    directory = opendir(backupPath.c_str());
+    if (directory != NULL) { //if its a directory and can be opened
+        while ((curPartDir = readdir(directory))) {
+            std::string curFile = (curPartDir -> d_name);
+            stat((backupPath + curFile).c_str(),&sb);
+            if ( (curFile.size() > 5) && ((sb.st_mode & S_IFMT) == S_IFREG) ) { //prevent shorter names
+                if (curFile.substr(curFile.size() - 5, 5) == ".ctmp") { //if the file has the configuration temp ending
+                    ctempList.push_back(curFile);
+                }
+            }
+        }
+    } else {
+        return "";
+    }
+    closedir(directory);
+
+    //get the correct config backup file if existing over the hash
+    std::string hashStr = std::to_string(hashValue);
+    std::string backupFile = ""; //configuration backup file name
+    std::ifstream inputFile;
+    for (std::string curFile : ctempList) {
+        inputFile.open(backupPath + curFile, std::ifstream::in);
+        std::string curLine;
+        std::getline(inputFile, curLine);
+        if (curLine == hashStr) {
+            backupFile = curFile;
+        }
+        inputFile.close();
+    }
+    if (backupFile == "") {
+        return "";
+    }
+
+    //next check, if the the backup config file has all important values
+    inputFile.open(backupPath + backupFile, std::ifstream::in);
+    std::string curLine;
+    int i;
+    for (i = 0; (std::getline(inputFile, curLine)); i++) {
+        switch (i) {
+            case 0 : //hash
+                break;
+            case 1 : //reciStart
+                if (!std::regex_match(curLine, std::regex ("(-?)[[:d:]]+")) || (curLine != reciStart)) {
+                    return "";
+                }
+                break;
+            case 2 : //reciEnds
+                if (!std::regex_match(curLine, std::regex ("(-?)[[:d:]]+")) || (curLine != reciEnds)) {
+                    return "";
+                }
+                break;
+            case 3 : //reciDistance
+                if (!std::regex_match(curLine, std::regex floatRegex) || (curLine != reciDistance)) {
+                    return "";
+                }
+                break;
+            default : //temp pathes
+                FileStatsStruct fSS(backupPath + curLine);
+                if ((fSS.existing != 0) || (fSS.readable != 0)) { //is existing and readable
+                    return "";
+                }
+
+                unsigned int pos = curLine.find('_', 0);
+                if (pos == std::string::npos) {
+                    return "";
+                }
+                if (!std::regex_match((curLine.substr(0, pos)), std::regex ("[[:d:]]+"))) { //if the backup paths have the start values
+                    return "";
+                }
+                break;
+        }
+    }
+    if (i < 4) { //not enough values
+        return "";
+    }
+    inputFile.close();
+    return (backupPath + backupFile);
 }
 
 bool readInputFile(const std::string path, std::vector<float>& dataList) {
@@ -644,15 +745,57 @@ void createReciLattice(std::vector<float>& reciList, int start, int ends, float 
     }
 }
 
-void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int& cores) {
-    unsigned int partsize = numbers / cores;
+void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads) {
+    unsigned int partsize = numbers / maxThreads;
 
     unsigned int curPart = 0;
-    for (unsigned int i = 0; i < cores; i++) {
+    for (unsigned int i = 0; i < maxThreads; i++) {
         boundsList.push_back(curPart); //start value
-        curPart = curPart + partsize + ((i < numbers % cores) ? 1 : 0); //+ ((i < numbers % cores) ? 1 : 0) : adds one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
+        curPart = curPart + partsize + ((i < numbers % maxThreads) ? 1 : 0); //+ ((i < numbers % maxThreads) ? 1 : 0) : adds one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
         boundsList.push_back(curPart); //end value
     }
+}
+
+bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, unsigned int ends, std::string backupPath, std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads) {
+    //next check, if the the backup config file has all important values
+    backupPathList.push_back(backupCfgFilePath);
+    std::ifstream backupCfg;
+    backupCfg.open(backupCfgFilePath, std::ifstream::in);
+    std::string curLine;
+    std::getline(backupCfg, curLine); //hash
+    std::getline(backupCfg, curLine); //startreci
+    std::getline(backupCfg, curLine); //endreci
+    std::getline(backupCfg, curLine); //recidistance
+    int i;
+    for (i = 0; (std::getline(backupCfg, curLine)); i++) {
+        backupPathList.push_back(backupPath + curLine);
+
+        unsigned int curStart = std::stoi(curLine.substr(0, curLine.find('_', 0))); //already checked in checkBackup
+
+        std::ifstream curBackupFile;
+        curBackupFile.open(backupPath + curLine, std::ifstream::in | std::ifstream::binary);
+        float number;
+        std::vector<float> curThreadList;
+        unsigned int alreadyDone;
+        for (alreadyDone = 0; curBackupFile.read((char*)&number, sizeof(float)); alreadyDone++) { //instead of i++ maybe (i % 4) (but slower)
+            curThreadList.push_back(number);
+        }
+        if (!curBackupFile.good() && !curBackupFile.eof()) {
+            return false;
+        }
+        curBackupFile.close();
+
+        outputList.push_back(curThreadList);
+        if (curStart != 0) { //prevent adding end if its the first thread
+            boundsList.push_back(curStart); //end value
+        }
+        boundsList.push_back(curStart + alreadyDone); //start value; original start value + already done values
+    }
+    boundsList.push_back(ends); //adding the last end
+
+    maxThreads = i;
+    backupCfg.close();
+    return true;
 }
 
 void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
@@ -673,7 +816,7 @@ void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList,
 
 void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
     std::ofstream backupFile;
-    backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+    backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
 
     const unsigned int srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
