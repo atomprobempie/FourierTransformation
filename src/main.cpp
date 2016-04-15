@@ -1,6 +1,5 @@
 /*
     TODO:
-        catch empty input arguments
         use real tmp files type
         use real error codes?
         delete backup dir too if it was created
@@ -110,8 +109,9 @@ int main(int argc, char* argv[]) {
             }
             getReciprocalValues(reciStart, reciEnds, reciDistance); //set reciprocal lattice values
         } else {
+            int neededArgs = 1; //needed arguments: source path, reciprocal space
             sourcePath = argv[1]; //source path is the first argument
-            if (sourcePath == "?help") { //show help
+            if (((sourcePath == "?help") || (sourcePath == "-help") || (sourcePath == "help")) && argc == 2) { //show help
                 getHelp();
                 return 0;
             }
@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
                 if ( std::regex_match(curString, std::regex floatRegex) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
+                    neededArgs++;
                     reciStart = argv[i - 2];
                     reciEnds = argv[i - 1];
                     reciDistance = curString;
@@ -139,6 +140,11 @@ int main(int argc, char* argv[]) {
                         custThreads = std::stoi(curString);
                     }
                 }
+            }
+            if (neededArgs < 2) {
+                std::cout << "ERROR: not enough arguments set, start with -help for more information" << std::endl; //status msg
+                std::cout << "CLOSED" << std::endl; //status msg
+                return -1;
             }
         }
         reciStartVal = std::stoi(reciStart);
@@ -410,9 +416,10 @@ void getPaths(std::string &sourcePath, std::string &exportPath) { //ask for impo
     std::cout << "Note: no arguments given" << std::endl; //status msg
     std::cout << "\tYou can use absolute paths or a relative path based on the execution folder" << std::endl;
     std::cout << "\tUse /" << std::endl;
-    std::cout << "Source file: ";
-    std::getline(std::cin, sourcePath);
-    std::cout << std::endl;
+    while (sourcePath == "") {
+        std::cout << "Source file: ";
+        std::getline(std::cin, sourcePath);
+    }
 
     std::cout << "\tIf you do not set an export path, the export folder in your execution folder will be used." << std::endl;
     std::cout << "Export path: ";
