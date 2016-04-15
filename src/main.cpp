@@ -3,7 +3,6 @@
         use real tmp files type
         use real error codes?
         delete backup dir too if it was created
-        catch to small reciprocal space
 */
 /*
     Developer:
@@ -58,7 +57,7 @@ bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
 std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
-void createReciLattice(std::vector<float>& reciList, const int start, const int ends, const float distance);
+void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads);
 bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
 void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
@@ -77,21 +76,17 @@ int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << std::endl;
 
-    //get paths
+    //declare all important things
     std::vector<float> dataList; //0: x Coord.; 1: y Coord.; 2: z Coord.
     std::vector<float> reciList;
-    int reciStartVal; //reciprocal space start
-    int reciEndsVal; //reciprocal space end
-    float reciDistanceVal; //reciprocal space distance
-
     std::vector< std::vector<float> > outputList; //outputList is the list who "manage" all threadLists
     std::vector<std::string> backupPathList;
     std::string sourcePath;
     std::string exportPath = "export/";
     std::string backupPath = "backup/";
-    std::string reciStart;
-    std::string reciEnds;
-    std::string reciDistance;
+    std::string reciStart; //reciprocal space start
+    std::string reciEnds; //reciprocal space end
+    std::string reciDistance; //reciprocal space distance
     bool forceCreatePath = false; //force creating export path
     bool useBackup = true; //enables writing current results to hard disk, to prevent crashes
     bool restartingCalc = true; //no restarting even if a correct temp was found
@@ -117,7 +112,7 @@ int main(int argc, char* argv[]) {
 
             for (int i = 2; i < argc; i++) { //get arguments and paths
                 std::string curString(argv[i]);
-                if ( std::regex_match(curString, std::regex floatRegex) && std::regex_match(argv[i - 1], std::regex ("(-?)[[:d:]]+")) && std::regex_match(argv[i - 2], std::regex ("(-?)[[:d:]]+")) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
+                if ( std::regex_match(curString, std::regex floatRegex) && std::regex_match(argv[i - 1], std::regex floatRegex) && std::regex_match(argv[i - 2], std::regex floatRegex) && (std::string(argv[i - 3]) == "-s") ) { //set reciprocal space minimum (int) and maximum (int) and distance (float)
                     neededArgs++;
                     reciStart = argv[i - 2];
                     reciEnds = argv[i - 1];
@@ -146,11 +141,8 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
         }
-        reciStartVal = std::stoi(reciStart);
-        reciEndsVal = std::stoi(reciEnds);
-        reciDistanceVal = std::stof(reciDistance);
 
-        if ((reciStartVal >= reciEndsVal) || (reciDistanceVal <= 0)) {
+        if ((std::stof(reciStart) >= std::stof(reciEnds)) || (std::stof(reciDistance) <= 0) || (((std::stof(reciEnds) - std::stof(reciStart)) / std::stof(reciDistance)) < 1)) { //(((std::stof(reciEnds) - std::stof(reciStart)) / reciDistance) < 1) : no correct reciprocal space could be init start: 0 end: 4 but distance is 5
             std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
@@ -222,7 +214,7 @@ int main(int argc, char* argv[]) {
     std::cout << "DONE: generate hash" << std::endl; //status msg
 
     //create reciprocal lattice
-    createReciLattice(reciList, reciStartVal, reciEndsVal, reciDistanceVal);
+    createReciLattice(reciList, std::stof(reciStart), std::stof(reciEnds), std::stof(reciDistance));
     std::cout << "Reciprocal Lattice:" << std::endl;
     std::cout << "  Start: " << reciStart << std::endl;
     std::cout << "  End: " << reciEnds << std::endl;
@@ -739,7 +731,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
     return true;
 }
 
-void createReciLattice(std::vector<float>& reciList, const int start, const int ends, const float distance) { //create reciprocal space
+void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance) { //create reciprocal space
     for (float i = start; i <= ends; i += distance) {
         for (float k = start; k <= ends; k += distance) {
             for (float o = start; o <= ends; o += distance) {
