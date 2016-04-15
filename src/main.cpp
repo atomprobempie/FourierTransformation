@@ -3,7 +3,6 @@
         use real tmp files type
         use real error codes?
         delete backup dir too if it was created
-        check const in functions
         catch to small reciprocal space
 */
 /*
@@ -53,17 +52,17 @@ void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
 void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::string& reciDistance);
 void correctPath(std::string& path);
-const bool createDir(std::string path);
-bool checkBackUpPath(std::string backupPath);
-bool checkExportPath(std::string exportPath, bool forceCreatePath);
+const bool createDir(const std::string path);
+bool checkBackUpPath(const std::string backupPath);
+bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
-std::string checkBackup(std::string backupPath, uint32_t hashValue, std::string reciStart, std::string reciEnds, std::string reciDistance);
+std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
-void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance);
+void createReciLattice(std::vector<float>& reciList, const int start, const int ends, const float distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads);
-bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, unsigned int ends, std::string backupPath, std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
+bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
 void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath);
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, const std::string backupPath);
 const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
@@ -481,7 +480,7 @@ void correctPath(std::string& path) {
     }
 }
 
-const bool createDir(std::string path) {
+const bool createDir(const std::string path) {
     std::string curPath = path;
     size_t pos = path.find("/");
     curPath = path.substr(0, pos + 1);
@@ -505,7 +504,7 @@ const bool createDir(std::string path) {
     return true;
 }
 
-bool checkBackUpPath(std::string backupPath) {
+bool checkBackUpPath(const std::string backupPath) {
     FileStatsStruct fSS(backupPath);
     if ((fSS.existing != 0) && (fSS.existingErrno == ENOENT)) { //check existing of backup path
         std::cout << "Note: backup path is not existing." << std::endl; //status msg
@@ -533,7 +532,7 @@ bool checkBackUpPath(std::string backupPath) {
     return true;
 }
 
-bool checkExportPath(std::string exportPath, bool forceCreatePath) {
+bool checkExportPath(std::string& exportPath, bool forceCreatePath) {
     bool pathIsOk = false;
     while (!pathIsOk) {
         FileStatsStruct fSS(exportPath);
@@ -609,7 +608,7 @@ uint32_t getHash(const std::string path) { //small working hash function
     return hashValue;
 }
 
-std::string checkBackup(std::string backupPath, uint32_t hashValue, std::string reciStart, std::string reciEnds, std::string reciDistance) {
+std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance) {
     std::vector<std::string> ctempList;
     struct stat sb;
     struct dirent* curPartDir;
@@ -740,7 +739,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
     return true;
 }
 
-void createReciLattice(std::vector<float>& reciList, int start, int ends, float distance) { //create reciprocal space
+void createReciLattice(std::vector<float>& reciList, const int start, const int ends, const float distance) { //create reciprocal space
     for (float i = start; i <= ends; i += distance) {
         for (float k = start; k <= ends; k += distance) {
             for (float o = start; o <= ends; o += distance) {
@@ -763,7 +762,7 @@ void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numb
     }
 }
 
-bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, unsigned int ends, std::string backupPath, std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads) {
+bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads) {
     //next check, if the the backup config file has all important values
     backupPathList.push_back(backupCfgFilePath);
     std::ifstream backupCfg;
@@ -821,7 +820,7 @@ void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList,
     }
 }
 
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, std::string backupPath) {
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, const std::string backupPath) {
     std::ofstream backupFile;
     backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
 
