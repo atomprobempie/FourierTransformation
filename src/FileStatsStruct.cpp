@@ -3,9 +3,11 @@
     int F_OK = 00;
     int W_OK = 02;
     int R_OK = 04;
+#elif defined __GNUC__
+    #include <unistd.h>
 #endif
+#include <io.h>
 #include <string>
-#include <unistd.h>
 #include <sys/stat.h>
 
 FileStatsStruct::FileStatsStruct(std::string path) {

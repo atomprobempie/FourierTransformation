@@ -9,19 +9,17 @@
 #if defined __GNUC__
     #include <sys/stat.h>
     #include <unistd.h>
+    #include <dirent.h>
 #elif defined _MSC_VER
     #include <Windows.h>
     #include <intrin.h>
+    #include <strsafe.h>
+    #include <Shlwapi.h>
+    #pragma comment(lib, "Shlwapi.lib")
 #endif
 
 #include <io.h>
-#if defined _MSC_VER
-    int F_OK = 00;
-    int W_OK = 02;
-    int R_OK = 04;
-#endif
 #include <direct.h>
-#include <dirent.h>
 #include <errno.h>
 #include <iostream>
 #include <fstream>
@@ -33,13 +31,17 @@
 
 #include <time.h>
 
-#define M_PI (3.141592653589793238462)
-#define floatRegex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")
+#ifndef M_PI
+    #define M_PI (3.141592653589793238462)
+#endif
+#ifndef floatRegex
+    #define floatRegex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")
+#endif
 #include <cmath>
 #include <vector>
 #include <iomanip>
 #include <stdint.h>
-#include <FileStatsStruct.h>
+#include "FileStatsStruct.h"
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
@@ -49,8 +51,8 @@ const bool createDir(const std::string path);
 bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated);
 bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
-std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
+std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
 void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance);
 void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads);
 bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
@@ -64,7 +66,7 @@ bool cleanBackup(const std::vector<std::string>& backupPathList, const std::stri
 
 int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "Direct Fourier Transformation of 3D points. - development version" << std::endl << std::endl;
+    std::cout << "Direct Fourier Transformation of 3D points. - 1.0" << std::endl << std::endl;
     std::cout << "Use ?help as source file for more information and starting with arguments." << std::endl;
     std::cout << "A wider terminal is recommend (around 100), change it in the terminal settings." << std::endl;
     std::cout << "WARNING: This program will try to use all cores! Your system should run stable though." << std::endl;
@@ -344,7 +346,7 @@ int main(int argc, char* argv[]) {
 void getHelp() { //help and info section
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << "Direct Fourier Transformation of 3D points." << std::endl << std::endl;
-    std::cout << "Version: development" << std::endl;
+    std::cout << "Version: 1.0" << std::endl;
     std::cout << "Developer: " << std::endl;
     std::cout << "Thanks to:" << std::endl;
     std::cout << "  " << std::endl;
@@ -356,6 +358,7 @@ void getHelp() { //help and info section
     std::cout << "  The source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <mass>" << std::endl;
     std::cout << "  With the Coordinates a 3D Direct Fourier Transformation will be performed (no Fast Fourier)" << std::endl;
+    std::cout << "  If a correct backup was found it will normally restart from the backup data." << std::endl;
     std::cout << "  The result is a reciprocal lattice with the log10 of the intensity." << std::endl;
     std::cout << "  Exported as a 32bit big endian binary file with the file ending .pos and this format:" << std::endl;
     std::cout << "    <X Coord.> <Y Coord.> <Z Coord.> <log10 of intensity>" << std::endl;
@@ -591,44 +594,117 @@ uint32_t getHash(const std::string path) { //small working hash function
     return hashValue;
 }
 
+bool readInputFile(const std::string path, std::vector<float>& dataList) {
+    std::ifstream inputFile;
+    inputFile.open(path, std::ifstream::in | std::ifstream::binary);
+
+    FileStatsStruct fSS(path);
+    if ((fSS.existing != 0) || ((fSS.fileType & S_IFMT) != S_IFREG) || (fSS.readable != 0)) { //check source file path, if a error is returned
+        std::string curMsg;
+        if (fSS.existing != 0) {
+            curMsg = fSS.existingStr;
+        } else if ((fSS.fileType & S_IFMT) != S_IFREG) {
+            curMsg = "not a regular file";
+        } else {
+            curMsg = fSS.readableStr;
+        }
+        std::cout << "ERROR: import data" << std::endl; //status msg
+        std::cout << "\timport data is " << curMsg << std::endl; //status msg
+        return false;
+    }
+
+    inputFile.seekg(0, inputFile.end);
+    std::streamoff dataSize = (inputFile.tellg() / 4); //4 bytes are 32 bit
+    inputFile.seekg(0, inputFile.beg);
+    if (dataSize % 4 != 0) { //if there are no 4 * X bytes the file can be corrupted because the default input file has 4 number per each point
+        std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
+    }
+    uint32_t number;
+    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
+        //convert big endian to little endian because the input is 32bit float big endian
+        #if defined __GNUC__
+            number = (__builtin_bswap32(number));
+        #elif defined _MSC_VER
+            number = (_byteswap_ulong(number));
+        #endif
+        if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
+            dataList.push_back(reinterpret_cast<float&>(number));
+        }
+    }
+    if (!inputFile.good() && !inputFile.eof()) {
+        std::cout << "ERROR: import data" << std::endl; //status msg
+        std::cout << "\tError while reading the source file." << std::endl; //status msg
+        return false;
+    }
+    inputFile.close();
+    return true;
+}
+
 std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance) {
     std::vector<std::string> ctempList;
-    struct stat sb;
-    struct dirent* curPartDir;
-    DIR* directory;
 
-    directory = opendir(backupPath.c_str());
-    if (directory != NULL) { //if its a directory and can be opened
-        while ((curPartDir = readdir(directory))) {
-            std::string curFile = (curPartDir -> d_name);
-            stat((backupPath + curFile).c_str(),&sb);
-            if ( (curFile.size() > 5) && ((sb.st_mode & S_IFMT) == S_IFREG) ) { //prevent shorter names
-                if (curFile.substr(curFile.size() - 5, 5) == ".ctmp") { //if the file has the configuration temp ending
-                    ctempList.push_back(curFile);
+    #if defined __GNUC__
+        struct dirent* curPartDir;
+        struct stat sb;
+        DIR* directory;
+
+        directory = opendir(backupPath.c_str());
+        if (directory != NULL) { //if its a directory and can be opened
+            while ((curPartDir = readdir(directory))) {
+                std::string curFile = (curPartDir->d_name);
+                stat((backupPath + curFile).c_str(), &sb);
+                if ((curFile.size() > 5) && ((sb.st_mode & S_IFMT) == S_IFREG)) { //prevent shorter names
+                    if (curFile.substr(curFile.size() - 5, 5) == ".ctmp") { //if the file has the configuration temp ending
+                        ctempList.push_back(curFile);
+                    }
                 }
             }
         }
-    } else {
-        return "";
-    }
-    closedir(directory);
+        else {
+            return "";
+        }
+        closedir(directory);
+    #elif defined _MSC_VER
+        std::string path = backupPath + "*.ctmp"; //if the file has the configuration temp ending
+        TCHAR szDir[MAX_PATH];
+        StringCchCopy(szDir, MAX_PATH, (std::wstring(path.begin(), path.end())).c_str());
+        WIN32_FIND_DATA fileAttributes;
+        HANDLE hFind = INVALID_HANDLE_VALUE;
+        hFind = FindFirstFile(szDir, &fileAttributes);
+
+        if (INVALID_HANDLE_VALUE == hFind) { //if theres an error by findfirstfile
+            return "";
+        }
+
+        do {
+            if (fileAttributes.dwFileAttributes == FILE_ATTRIBUTE_NORMAL) { //if its a regular file
+                std::wstring nameW = std::wstring(fileAttributes.cFileName); //convert cFileName to wstring
+                ctempList.push_back(std::string(nameW.begin(), nameW.end()));
+            }
+        } while (FindNextFile(hFind, &fileAttributes) != 0); //get next file
+
+        if (GetLastError() != ERROR_NO_MORE_FILES) {
+            return "";
+        }
+        FindClose(hFind);
+    #endif
 
     //get the correct config backup file if existing over the hash
-    std::string hashStr = std::to_string(hashValue);
-    std::string backupFile = ""; //configuration backup file name
-    std::ifstream inputFile;
-    for (std::string curFile : ctempList) {
-        inputFile.open(backupPath + curFile, std::ifstream::in);
-        std::string curLine;
-        std::getline(inputFile, curLine);
-        if (curLine == hashStr) {
-            backupFile = curFile;
-        }
-        inputFile.close();
-    }
-    if (backupFile == "") {
-        return "";
-    }
+	std::string hashStr = std::to_string(hashValue);
+	std::string backupFile = ""; //configuration backup file name
+	std::ifstream inputFile;
+	for (std::string curFile : ctempList) {
+		inputFile.open(backupPath + curFile, std::ifstream::in);
+		std::string curLine;
+		std::getline(inputFile, curLine);
+		if (curLine == hashStr) {
+			backupFile = curFile;
+		}
+		inputFile.close();
+	}
+	if (backupFile == "") {
+		return "";
+	}
 
     //next check, if the the backup config file has all important values
     inputFile.open(backupPath + backupFile, std::ifstream::in);
@@ -674,52 +750,6 @@ std::string checkBackup(const std::string backupPath, const uint32_t hashValue, 
     }
     inputFile.close();
     return (backupPath + backupFile);
-}
-
-bool readInputFile(const std::string path, std::vector<float>& dataList) {
-    std::ifstream inputFile;
-    inputFile.open(path, std::ifstream::in | std::ifstream::binary);
-
-    FileStatsStruct fSS(path);
-    if ((fSS.existing != 0) || ((fSS.fileType & S_IFMT) != S_IFREG) || (fSS.readable != 0)) { //check source file path, if a error is returned
-        std::string curMsg;
-        if (fSS.existing != 0) {
-            curMsg = fSS.existingStr;
-        } else if ((fSS.fileType & S_IFMT) != S_IFREG) {
-            curMsg = "not a regular file";
-        } else {
-            curMsg = fSS.readableStr;
-        }
-        std::cout << "ERROR: import data" << std::endl; //status msg
-        std::cout << "\timport data is " << curMsg << std::endl; //status msg
-        return false;
-    }
-
-    inputFile.seekg(0, inputFile.end);
-    std::streamoff dataSize = (inputFile.tellg() / 4); //4 bytes are 32 bit
-    inputFile.seekg(0, inputFile.beg);
-    if (dataSize % 4 != 0) { //if there are no 4 * X bytes the file can be corrupted because the default input file has 4 number per each point
-        std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
-    }
-    uint32_t number;
-    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
-        //convert big endian to little endian because the input is 32bit float big endian
-        #if defined __GNUC__
-            number = (__builtin_bswap32(number));
-        #elif defined _MSC_VER
-            number = (_byteswap_ulong(number));
-        #endif
-        if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
-            dataList.push_back(reinterpret_cast<float&>(number));
-        }
-    }
-    if (!inputFile.good() && !inputFile.eof()) {
-        std::cout << "ERROR: import data" << std::endl; //status msg
-        std::cout << "\tError while reading the source file." << std::endl; //status msg
-        return false;
-    }
-    inputFile.close();
-    return true;
 }
 
 void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance) { //create reciprocal space
@@ -967,17 +997,27 @@ bool cleanBackup(const std::vector<std::string>& backupPathList, const std::stri
     if (wasBackupPathCreated) { //remove backupPath if it was created
         cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
     } else { //test if the backup path is empty then delete the backup path too
-        DIR* directory = opendir(backupPath.c_str());
-        if (directory != NULL) { //if its a directory and can be opened
-            int i = 0;
-            for (i = 0; (i < 3) && (readdir(directory)); i++) {
+        #if defined __GNUC__
+            DIR* directory = opendir(backupPath.c_str());
+            if (directory != NULL) { //if its a directory and can be opened
+                int i = 0;
+                for (i = 0; (i < 3) && (readdir(directory)); i++) {
 
+                }
+                if (i <= 2) { //empty
+                    cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
+                }
             }
-            if (i <= 2) { //empty
+            closedir(directory);
+        #elif defined _MSC_VER
+            TCHAR szDir[MAX_PATH];
+            StringCchCopy(szDir, MAX_PATH, (std::wstring(backupPath.begin(), backupPath.end())).c_str());
+
+            if (PathIsDirectoryEmpty(szDir)) {
+                std::cout << GetLastError();
                 cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
             }
-        }
-        closedir(directory);
+        #endif
     }
     return cleanUp;
 }
