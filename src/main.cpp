@@ -5,21 +5,25 @@
 
     License:
 */
-
-#if defined __GNUC__
+#define __MINGW__ ( __MINGW32__ || __MINGW64__ )
+#if __GNUC__
     #include <sys/stat.h>
     #include <unistd.h>
     #include <dirent.h>
-#elif defined _MSC_VER
+#endif
+#if _MSC_VER
+    #include <direct.h>
+    #include <io.h>
     #include <Windows.h>
     #include <intrin.h>
     #include <strsafe.h>
     #include <Shlwapi.h>
     #pragma comment(lib, "Shlwapi.lib")
 #endif
+#if __MINGW__
+    #include <direct.h>
+#endif
 
-#include <io.h>
-#include <direct.h>
 #include <errno.h>
 #include <iostream>
 #include <fstream>
@@ -469,14 +473,14 @@ const bool createDir(const std::string path) {
     std::string curPath = path;
     size_t pos = path.find("/");
     curPath = path.substr(0, pos + 1);
-    if (curPath[1] == ':') { //if theres an drive letter dont prevent to create it
+    if (curPath[1] == ':') { //if theres a drive letter, prevent creation
         pos = path.find("/", pos + 1);
         curPath = path.substr(0, pos + 1);
     }
     while (pos != std::string::npos) { //try to create each directory of the path, if its existing try the next, else return error
-        #if defined _linux
+        #if __linux
         if (mkdir(curPath.c_str(), S_IRWXU) != 0) { //} prevent wrong text blocks in codeblocks
-        #elif defined _WIN32 || _WIN64
+        #elif (_WIN32 || _WIN64)
         if (_mkdir(curPath.c_str()) != 0) { //try to create all directories
         #endif
             if (errno != EEXIST) { //if theres an error different as the already "existing" error
@@ -622,9 +626,9 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
     uint32_t number;
     for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
         //convert big endian to little endian because the input is 32bit float big endian
-        #if defined __GNUC__
+        #if __GNUC__
             number = (__builtin_bswap32(number));
-        #elif defined _MSC_VER
+        #elif _MSC_VER
             number = (_byteswap_ulong(number));
         #endif
         if ((i % 4) != 3) { //dont save every 4th input number (its the mass)
@@ -643,7 +647,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
 std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance) {
     std::vector<std::string> ctempList;
 
-    #if defined __GNUC__
+    #if __GNUC__
         struct dirent* curPartDir;
         struct stat sb;
         DIR* directory;
@@ -664,7 +668,7 @@ std::string checkBackup(const std::string backupPath, const uint32_t hashValue, 
             return "";
         }
         closedir(directory);
-    #elif defined _MSC_VER
+    #elif _MSC_VER
         std::string path = backupPath + "*.ctmp"; //if the file has the configuration temp ending
         TCHAR szDir[MAX_PATH];
         StringCchCopy(szDir, MAX_PATH, (std::wstring(path.begin(), path.end())).c_str());
@@ -882,9 +886,9 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
     unsigned int curRawProgress = 0;
     unsigned int tmpCurRawProgress = 0;
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
-        #if defined __GNUC__
+        #if __GNUC__
         sleep(updateTime); //in seconds
-        #elif defined _MSC_VER
+        #elif _MSC_VER
         Sleep(updateTime * 1000); //in seconds
         #endif
         tmpCurRawProgress = 0;
@@ -915,11 +919,17 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
 }
 
 const std::string getCurrentTime() { //return the current time. format: year_month_day_hour_minute_second
-    time_t     now = time(0);
-    struct tm  tstruct;
-    char       buf[25];
-    localtime_s(&tstruct, &now);
-    strftime(buf, sizeof(buf), "%Y_%m_%d-%H_%M_%S", &tstruct);
+    time_t now = time(0);
+    char buf[25];
+    #if (__MINGW__ || _MSC_VER)
+        struct tm  tstruct;
+        localtime_s(&tstruct, &now);
+        strftime(buf, sizeof(buf), "%Y_%m_%d-%H_%M_%S", &tstruct);
+    #elif __GNUC__
+        struct tm* tstruct;
+        tstruct = localtime(&now);
+        strftime(buf, sizeof(buf), "%Y_%m_%d-%H_%M_%S", tstruct);
+    #endif
     return buf;
 }
 
@@ -946,7 +956,7 @@ bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vect
             curRawProgress++;
             std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
 
-            #if defined __GNUC__
+            #if __GNUC__
                 float curReciValue = reciList[(curRawProgress - 1) * 3];
                 uint32_t curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
                 outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
@@ -961,7 +971,7 @@ bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vect
 
                 curConvertedValue = (__builtin_bswap32( reinterpret_cast<uint32_t&>(curValue) )); //convert little endian to big endian
                 outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
-            #elif defined _MSC_VER
+            #elif _MSC_VER
                 float curReciValue = reciList[(curRawProgress - 1) * 3];
                 uint32_t curConvertedValue = (_byteswap_ulong( reinterpret_cast<uint32_t&>(curReciValue) )); //convert little endian to big endian
                 outputFile.write((char*) &curConvertedValue, sizeof(uint32_t));
@@ -997,7 +1007,7 @@ bool cleanBackup(const std::vector<std::string>& backupPathList, const std::stri
     if (wasBackupPathCreated) { //remove backupPath if it was created
         cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
     } else { //test if the backup path is empty then delete the backup path too
-        #if defined __GNUC__
+        #if __GNUC__
             DIR* directory = opendir(backupPath.c_str());
             if (directory != NULL) { //if its a directory and can be opened
                 int i = 0;
@@ -1009,7 +1019,7 @@ bool cleanBackup(const std::vector<std::string>& backupPathList, const std::stri
                 }
             }
             closedir(directory);
-        #elif defined _MSC_VER
+        #elif _MSC_VER
             TCHAR szDir[MAX_PATH];
             StringCchCopy(szDir, MAX_PATH, (std::wstring(backupPath.begin(), backupPath.end())).c_str());
 

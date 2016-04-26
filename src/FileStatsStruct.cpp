@@ -1,18 +1,22 @@
 #include "FileStatsStruct.h"
-#if defined _MSC_VER
+#if _MSC_VER
+    #include <io.h>
     int F_OK = 00;
     int W_OK = 02;
     int R_OK = 04;
-#elif defined __GNUC__
+#elif __GNUC__
     #include <unistd.h>
 #endif
-#include <io.h>
 #include <string>
 #include <sys/stat.h>
 
 FileStatsStruct::FileStatsStruct(std::string path) {
     errno = 0;
-    FileStatsStruct::existing = _access_s(path.c_str(), F_OK); //check exist
+    #if __MINGW__ || _MSC_VER
+        FileStatsStruct::existing = _access_s(path.c_str(), F_OK); //check exist
+    #elif __GNUC__
+        FileStatsStruct::existing = access(path.c_str(), F_OK); //check exist
+    #endif
     FileStatsStruct::existingErrno = errno;
     if (FileStatsStruct::existing != 0) {
         switch (FileStatsStruct::existingErrno) {
@@ -28,7 +32,11 @@ FileStatsStruct::FileStatsStruct(std::string path) {
         }
     }
 
-    FileStatsStruct::readable = _access_s(path.c_str(), R_OK); //check read
+    #if __MINGW__ || _MSC_VER
+        FileStatsStruct::readable = _access_s(path.c_str(), R_OK); //check exist
+    #elif __GNUC__
+        FileStatsStruct::readable = access(path.c_str(), R_OK); //check exist
+    #endif
     if (FileStatsStruct::readable != 0) {
         switch (FileStatsStruct::readable) {
             case (0) :
@@ -41,7 +49,11 @@ FileStatsStruct::FileStatsStruct(std::string path) {
     }
 
     errno = 0;
-    FileStatsStruct::writeable = _access_s(path.c_str(), W_OK); //check write
+    #if __MINGW__ || _MSC_VER
+        FileStatsStruct::writeable = _access_s(path.c_str(), W_OK); //check exist
+    #elif __GNUC__
+        FileStatsStruct::writeable = access(path.c_str(), W_OK); //check exist
+    #endif
     int curErrno = errno;
     if (FileStatsStruct::writeable != 0) {
         switch (curErrno) {
