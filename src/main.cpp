@@ -1,9 +1,13 @@
 /*
     Developer:
-    Thanks to:
-
-
+        Iceflower S
+    Contributors & Help:
+        Beha (shacknetisp)
+        B. Gault
+        Bonifarz
+        M. Celik
     License:
+        GPLv3 (http://www.gnu.org/licenses/gpl.html)
 */
 #define __MINGW__ ( __MINGW32__ || __MINGW64__ )
 #if __GNUC__
@@ -351,12 +355,15 @@ void getHelp() { //help and info section
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
     std::cout << "Direct Fourier Transformation of 3D points." << std::endl << std::endl;
     std::cout << "Version: 1.0" << std::endl;
-    std::cout << "Developer: " << std::endl;
-    std::cout << "Thanks to:" << std::endl;
-    std::cout << "  " << std::endl;
-    std::cout << "  " << std::endl;
+    std::cout << "Developer:" << std::endl;
+    std::cout << "  Iceflower S" << std::endl;
+    std::cout << "Contributors & Help:" << std::endl;
+    std::cout << "  Beha (shacknetisp)" << std::endl;
+    std::cout << "  B. Gault" << std::endl;
+    std::cout << "  Bonifarz" << std::endl;
+    std::cout << "  M. Celik" << std::endl;
     std::cout << "Language: C++" << std::endl;
-    std::cout << "License: " << std::endl;
+    std::cout << "License: GPLv3 (http://www.gnu.org/licenses/gpl.html)" << std::endl;
     std::cout << std::endl;
     std::cout << "HELP" << std::endl;
     std::cout << "  The source file will be read as 32bit big endian binary numbers with this structure:" << std::endl;

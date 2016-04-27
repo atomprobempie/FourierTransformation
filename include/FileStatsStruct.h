@@ -1,3 +1,7 @@
+/*
+    License:
+        GPLv3 (http://www.gnu.org/licenses/gpl.html)
+*/
 #ifndef FILESTATSSTRUCT_H
 #define FILESTATSSTRUCT_H
 

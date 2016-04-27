@@ -1,3 +1,7 @@
+/*
+    License:
+        GPLv3 (http://www.gnu.org/licenses/gpl.html)
+*/
 #include "FileStatsStruct.h"
 #if _MSC_VER
     #include <io.h>
