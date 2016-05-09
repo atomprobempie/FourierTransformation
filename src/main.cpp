@@ -40,10 +40,10 @@
 #include <time.h>
 
 #ifndef M_PI
-    #define M_PI (3.141592653589793238462)
+    #define M_PI ((float) 3.141592653589793238462)
 #endif
 #ifndef floatRegex
-    #define floatRegex ("((-?)[[:d:]]+)(\\.(([[:d:]]+)?))?((e|E)(-?)[:d:]+)?")
+    #define floatRegex ("(-?[[:d:]]+)(\\.[[:d:]]+)?((e|E)-?[[:d:]]+)?")
 #endif
 #include <cmath>
 #include <vector>
@@ -55,19 +55,19 @@ void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
 void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::string& reciDistance);
 void correctPath(std::string& path);
-const bool createDir(const std::string path);
+bool createDir(const std::string path);
 bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated);
 bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
 std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
 void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance);
-void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads);
-bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads);
-void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList);
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, const std::string backupPath);
+void calcPartSize(std::vector<size_t>& boundsList, const size_t numbers, const size_t maxThreads);
+bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float> >& outputList, const size_t ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, size_t& maxThreads);
+void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList);
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList, const std::string backupPath);
 const std::string getProgressBar(float percent);
-void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme);
+void DFTprogress(const std::vector< std::vector<float> >& outputList, const size_t finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
 bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
 bool cleanBackup(const std::vector<std::string>& backupPathList, const std::string backupPath, const bool wasBackupPathCreated);
@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
     bool useBackup = true; //enables writing current results to hard disk, to prevent crashes
     bool restartingCalc = true; //no restarting even if a correct temp was found
     bool autoClose = false; //closes automatically the program
-    unsigned int custThreads = 0; //custom threads value
+    size_t custThreads = 0; //custom threads value
     bool wasBackupPathCreated = false;
 
     {
@@ -230,8 +230,8 @@ int main(int argc, char* argv[]) {
         //DFT
         //set the max threads which can be used; inclusive the main thread
             std::string backupCfgFilePath; //path to the configuration backup file
-            unsigned int maxThreads = 2; //max threads which will be supported
-            std::vector<unsigned int> boundsList;
+            size_t maxThreads = 2; //max threads which will be supported
+            std::vector<size_t> boundsList;
         if (restartingCalc && ((backupCfgFilePath = checkBackup(backupPath, sourceHash, reciStart, reciEnds, reciDistance)) != "")) {
             std::cout << "NOTE: backup found" << std::endl; //status msg
             std::cout << "START: loading backup" << std::endl; //status msg
@@ -261,7 +261,7 @@ int main(int argc, char* argv[]) {
             backupConfigFile.open(backupPathList[0], std::ofstream::out);
             backupConfigFile << sourceHash << std::endl;
             backupConfigFile << reciStart << std::endl << reciEnds << std::endl << reciDistance << std::endl;
-            for (unsigned int i = 0; i < (boundsList.size() - 1); i +=2) {
+            for (size_t i = 0; i < (boundsList.size() - 1); i +=2) {
                 std::string curFileName = std::to_string(boundsList[i]) + "_" + getCurrentTime() + ".tmp";
                 backupPathList.push_back(backupPath + curFileName);
                 backupConfigFile << curFileName << std::endl;
@@ -269,20 +269,20 @@ int main(int argc, char* argv[]) {
             backupConfigFile.close();
 
             //init the outputlist
-            for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
+            for (size_t i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
                 outputList.push_back(std::vector<float>());
             }
         }
         std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
 
         //init the outputlist
-        for (unsigned int i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
+        for (size_t i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
             outputList.push_back(std::vector<float>());
         }
 
         //configure threads
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads, seems to be possible even with maxThreads = 1
-        for (unsigned int i = 1; i < maxThreads; ++i) {
+        for (size_t i = 1; i < maxThreads; ++i) {
             if (useBackup) {
                 threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
             } else {
@@ -301,7 +301,7 @@ int main(int argc, char* argv[]) {
         } else {
             DFT(dataList, reciList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         }
-        for (unsigned int i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
+        for (size_t i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
         }
         progressT.join(); //join DFTprogress thread
@@ -433,7 +433,7 @@ void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::str
         std::cout << "Start: ";
         std::string input;
         std::getline(std::cin, input);
-        if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
+        if (std::regex_match(input, std::regex floatRegex)) {
             correctInput = true;
             reciStart = input;
         }
@@ -443,7 +443,7 @@ void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::str
         std::cout << "Ends: ";
         std::string input;
         std::getline(std::cin, input);
-        if (std::regex_match(input, std::regex ("(-?)[[:d:]]+"))) {
+        if (std::regex_match(input, std::regex floatRegex)) {
             correctInput = true;
             reciEnds = input;
         }
@@ -476,7 +476,7 @@ void correctPath(std::string& path) {
     }
 }
 
-const bool createDir(const std::string path) {
+bool createDir(const std::string path) {
     std::string curPath = path;
     size_t pos = path.find("/");
     curPath = path.substr(0, pos + 1);
@@ -598,7 +598,7 @@ uint32_t getHash(const std::string path) { //small working hash function
     inputFile.open(path, std::ifstream::in | std::ifstream::binary);
     uint32_t number;
     uint32_t hashValue = 0;
-    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
+    for (size_t i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
         hashValue ^= (number ^ i);
     }
     inputFile.close();
@@ -631,7 +631,7 @@ bool readInputFile(const std::string path, std::vector<float>& dataList) {
         std::cout << "WARNING: Source file may be corrupted!" << std::endl; //status msg
     }
     uint32_t number;
-    for (unsigned int i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
+    for (size_t i = 0; inputFile.read((char*)&number, sizeof(uint32_t)); i++) { //instead of i++ maybe (i % 4) (but slower)
         //convert big endian to little endian because the input is 32bit float big endian
         #if __GNUC__
             number = (__builtin_bswap32(number));
@@ -746,7 +746,7 @@ std::string checkBackup(const std::string backupPath, const uint32_t hashValue, 
                     return "";
                 }
 
-                unsigned int pos = curLine.find('_', 0);
+                size_t pos = curLine.find('_', 0);
                 if (pos == std::string::npos) {
                     return "";
                 }
@@ -775,18 +775,18 @@ void createReciLattice(std::vector<float>& reciList, const float start, const fl
     }
 }
 
-void calcPartSize(std::vector<unsigned int>& boundsList, const unsigned int numbers, const unsigned int maxThreads) {
-    unsigned int partsize = numbers / maxThreads;
+void calcPartSize(std::vector<size_t>& boundsList, const size_t numbers, const size_t maxThreads) {
+    size_t partsize = numbers / maxThreads;
 
-    unsigned int curPart = 0;
-    for (unsigned int i = 0; i < maxThreads; i++) {
+    size_t curPart = 0;
+    for (size_t i = 0; i < maxThreads; i++) {
         boundsList.push_back(curPart); //start value
         curPart = curPart + partsize + ((i < numbers % maxThreads) ? 1 : 0); //+ ((i < numbers % maxThreads) ? 1 : 0) : adds one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
         boundsList.push_back(curPart); //end value
     }
 }
 
-bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<float> >& outputList, const unsigned int ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, unsigned int& maxThreads) {
+bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float> >& outputList, const size_t ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, size_t& maxThreads) {
     //next check, if the the backup config file has all important values
     backupPathList.push_back(backupCfgFilePath);
     std::ifstream backupCfg;
@@ -800,13 +800,13 @@ bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<
     for (i = 0; (std::getline(backupCfg, curLine)); i++) {
         backupPathList.push_back(backupPath + curLine);
 
-        unsigned int curStart = std::stoi(curLine.substr(0, curLine.find('_', 0))); //already checked in checkBackup
+        size_t curStart = std::stoi(curLine.substr(0, curLine.find('_', 0))); //already checked in checkBackup
 
         std::ifstream curBackupFile;
         curBackupFile.open(backupPath + curLine, std::ifstream::in | std::ifstream::binary);
         float number;
         std::vector<float> curThreadList;
-        unsigned int alreadyDone;
+        size_t alreadyDone;
         for (alreadyDone = 0; curBackupFile.read((char*)&number, sizeof(float)); alreadyDone++) { //instead of i++ maybe (i % 4) (but slower)
             curThreadList.push_back(number);
         }
@@ -828,15 +828,15 @@ bool loadBackup(std::vector<unsigned int>& boundsList, std::vector< std::vector<
     return true;
 }
 
-void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList) {
-    const unsigned int srcSize = (dataList.size() / 3); //
+void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList) {
+    const size_t srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
 
-    for (unsigned int s = start; s < ends; s++) {
+    for (size_t s = start; s < ends; s++) {
         tempRe = 0;
         tempIm = 0;
-        for (unsigned int k = 0; k < srcSize; k++) {
+        for (size_t k = 0; k < srcSize; k++) {
             tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
             tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
         }
@@ -844,19 +844,19 @@ void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList,
     }
 }
 
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const unsigned int start, const unsigned int ends, std::vector<float>& threadOutputList, const std::string backupPath) {
+void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList, const std::string backupPath) {
     std::ofstream backupFile;
     backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
 
-    const unsigned int srcSize = (dataList.size() / 3); //
+    const size_t srcSize = (dataList.size() / 3); //
     float tempRe = 0; //real part
     float tempIm = 0; //imaginary part
     float result = 0;
 
-    for (unsigned int s = start; s < ends; s++) {
+    for (size_t s = start; s < ends; s++) {
         tempRe = 0;
         tempIm = 0;
-        for (unsigned int k = 0; k < srcSize; k++) {
+        for (size_t k = 0; k < srcSize; k++) {
             tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
             tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
         }
@@ -873,25 +873,25 @@ const std::string getProgressBar(const float percent) { //progressbar with numbe
         return "                    ...  _o**  ...                   ..."; //if illegal percent value show a snail ;)
     }
     //create the "empty" part of the bar + percent view
-    progressBar.width((110 - (percent)) / 2 - ((percent == 100) ? 1 : 0) - ( ((((int) percent) == percent) && ((int) percent % 2 != 1) ? 1 : 0)));
+    progressBar.width((int) (110 - (percent)) / 2 - ((percent == 100) ? 1 : 0) - ( ((((int) percent) == percent) && ((int) percent % 2 != 1) ? 1 : 0)));
     progressBar.fill(' ');
     progressBar << std::fixed << std::setprecision(((percent != 100) ? 1 : 0)) << percent << "%" << ((percent != 100) ? "" : " "); //last output fixes a doubled '%' at 100% cause of float output before
     std::string secondPart = progressBar.str();
     progressBar.str(std::string());
     //create the "full" part of the bar
-    progressBar.width((percent + 4) / 2);
+    progressBar.width((int) (percent + 4) / 2);
     progressBar.fill('=');
     progressBar << " ";
     progressBar << secondPart; //melt both parts to one
     return progressBar.str();
 }
 
-void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsigned int finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage + absolut; 3 = percentage + absolut + remaining time
+void DFTprogress(const std::vector< std::vector<float> >& outputList, const size_t finishValue, const int updateTime, const int showBarTheme) { //showbarTheme: 0 = absolut; 1 = percentage; 2 = percentage + absolut; 3 = percentage + absolut + remaining time
     time_t start, ends;
     time(&start);
 
-    unsigned int curRawProgress = 0;
-    unsigned int tmpCurRawProgress = 0;
+    size_t curRawProgress = 0;
+    size_t tmpCurRawProgress = 0;
     while(curRawProgress < finishValue) { //work until the finishValue (100%) is reached
         #if __GNUC__
         sleep(updateTime); //in seconds
@@ -909,14 +909,14 @@ void DFTprogress(const std::vector< std::vector<float> >& outputList, const unsi
                 std::cout << "\r" << curRawProgress << " / " << finishValue;
                 break;
             case 1: //only progress bar
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress);
+                std::cout << "\r" << getProgressBar(100.f / finishValue * curRawProgress);
                 break;
             case 2: //progress bar + absolute value
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
+                std::cout << "\r" << getProgressBar(100.f / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
                 break;
             default: //progress bar + absolute value + remaining time
                 time(&ends);
-                std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
+                std::cout << "\r" << getProgressBar(100.f / finishValue * curRawProgress) << " | " << curRawProgress << " / " << finishValue;
                 std::cout << std::fixed << " | " << (int) ((difftime(ends, start) / curRawProgress) * (finishValue - curRawProgress) / 60) << "m";
                 break;
             }
@@ -954,14 +954,14 @@ bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vect
 
     std::cout << "Note: saving DFT results to " << DFToutputFile << std::endl;
 
-    unsigned int finishValue = (reciList.size() / 3);
-    unsigned int curRawProgress = 0;
+    size_t finishValue = (reciList.size() / 3);
+    size_t curRawProgress = 0;
 
     for(auto threadList : outputList) { //loop through all thread lists
         for(auto curValue : threadList) { //loop through all numbers of the thread list
             curValue = std::log10(curValue);
             curRawProgress++;
-            std::cout << "\r" << getProgressBar(100. / finishValue * curRawProgress); //show progress
+            std::cout << "\r" << getProgressBar(100.f / finishValue * curRawProgress); //show progress
 
             #if __GNUC__
                 float curReciValue = reciList[(curRawProgress - 1) * 3];
