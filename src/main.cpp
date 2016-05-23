@@ -32,7 +32,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <string.h>
+#include <string>
 #include <regex>
 
 #include <thread>
@@ -43,7 +43,7 @@
     #define M_PI ((float) 3.141592653589793238462)
 #endif
 #ifndef floatRegex
-    #define floatRegex ("(-?[[:d:]]+)(\\.[[:d:]]+)?((e|E)-?[[:d:]]+)?")
+    #define floatRegex ("-?(([1-9][[:d:]]*)|0)(\\.[[:d:]]*[1-9])?((e|E)-?[1-9][[:d:]]*)?")
 #endif
 #include <cmath>
 #include <vector>
@@ -148,8 +148,14 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if ((std::stof(reciStart) >= std::stof(reciEnds)) || (std::stof(reciDistance) <= 0) || (((std::stof(reciEnds) - std::stof(reciStart)) / std::stof(reciDistance)) < 1)) { //(((std::stof(reciEnds) - std::stof(reciStart)) / reciDistance) < 1) : no correct reciprocal space could be init start: 0 end: 4 but distance is 5
-            std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
+        try {
+            if ((std::stof(reciStart) >= std::stof(reciEnds)) || (std::stof(reciDistance) <= 0) || (((std::stof(reciEnds) - std::stof(reciStart)) / std::stof(reciDistance)) < 1)) { //(((std::stof(reciEnds) - std::stof(reciStart)) / reciDistance) < 1) : no correct reciprocal space could be init start: 0 end: 4 but distance is 5
+                std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
+                std::cout << "CLOSED" << std::endl; //status msg
+                return -1;
+            }
+        } catch (std::out_of_range) {
+            std::cout << "ERROR: reciprocal values are not correct. One or more are out of range." << std::endl; //status msg
             std::cout << "CLOSED" << std::endl; //status msg
             return -1;
         }
@@ -511,7 +517,7 @@ bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated) {
             return false;
         } else {
             wasBackupPathCreated = true;
-            std::cout << "DONE: Creating backup directory" << std::endl; //status msg
+            std::cout << "DONE: creating backup directory" << std::endl; //status msg
             fSS = FileStatsStruct(backupPath); //refresh informations
         }
     }
