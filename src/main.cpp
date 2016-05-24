@@ -56,7 +56,7 @@ void getPaths(std::string &sourcePath, std::string &exportPath);
 void getReciprocalValues(std::string& reciStart, std::string& reciEnds, std::string& reciDistance);
 void correctPath(std::string& path);
 bool createDir(const std::string path);
-bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated);
+bool checkBackUpPath(const std::string backupPath);
 bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
@@ -70,7 +70,7 @@ const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const size_t finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
 bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
-bool cleanBackup(const std::vector<std::string>& backupPathList, const std::string backupPath, const bool wasBackupPathCreated);
+bool cleanBackup(const std::vector<std::string>& backupPathList, const std::string backupPath);
 
 int main(int argc, char* argv[]) {
     std::cout << "----------------------------------------------------------------------------------------------" << std::endl;
@@ -97,7 +97,6 @@ int main(int argc, char* argv[]) {
     bool restartingCalc = true; //no restarting even if a correct temp was found
     bool autoClose = false; //closes automatically the program
     size_t custThreads = 0; //custom threads value
-    bool wasBackupPathCreated = false;
 
     {
         //path managing
@@ -205,7 +204,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (useBackup) {
-            useBackup = checkBackUpPath(backupPath, wasBackupPathCreated);
+            useBackup = checkBackUpPath(backupPath);
         }
         std::cout << "DONE: checking given paths" << std::endl; //status msg
     }
@@ -342,7 +341,7 @@ int main(int argc, char* argv[]) {
 
     if (useBackup) {
         std::cout << "START: clean up temporary files" << std::endl; //status msg
-        if (cleanBackup(backupPathList, backupPath, wasBackupPathCreated)) {
+        if (cleanBackup(backupPathList, backupPath)) {
             std::cout << "DONE: clean up temporary files" << std::endl; //status msg
         } else {
             std::cout << "ERROR: clean up temporary files" << std::endl; //status msg
@@ -507,7 +506,7 @@ bool createDir(const std::string path) {
     return true;
 }
 
-bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated) {
+bool checkBackUpPath(const std::string backupPath) {
     FileStatsStruct fSS(backupPath);
     if ((fSS.existing != 0) && (fSS.existingErrno == ENOENT)) { //check existing of backup path
         std::cout << "Note: backup path is not existing." << std::endl; //status msg
@@ -517,7 +516,6 @@ bool checkBackUpPath(const std::string backupPath, bool& wasBackupPathCreated) {
             std::cout << "WARNING: backup is disabled"; //status msg
             return false;
         } else {
-            wasBackupPathCreated = true;
             std::cout << "DONE: creating backup directory" << std::endl; //status msg
             fSS = FileStatsStruct(backupPath); //refresh informations
         }
@@ -1013,35 +1011,33 @@ bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vect
     return true;
 }
 
-bool cleanBackup(const std::vector<std::string>& backupPathList, const std::string backupPath, const bool wasBackupPathCreated) {
+bool cleanBackup(const std::vector<std::string>& backupPathList, const std::string backupPath) {
     bool cleanUp = true; //check var for checking if the cleaning up was succeed
     for (auto curPath : backupPathList) { //remove all backup files
         cleanUp = ((std::remove(curPath.c_str()) == 0) && cleanUp);
     }
-    if (wasBackupPathCreated) { //remove backupPath if it was created
-        cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
-    } else { //test if the backup path is empty then delete the backup path too
-        #if __GNUC__
-            DIR* directory = opendir(backupPath.c_str());
-            if (directory != NULL) { //if its a directory and can be opened
-                int i = 0;
-                for (i = 0; (i < 3) && (readdir(directory)); i++) {
+    #if __GNUC__
+        DIR* directory = opendir(backupPath.c_str());
+        if (directory != NULL) { //if its a directory and can be opened
+            int i = 0;
+            for (i = 0; (i < 3) && (readdir(directory)); i++) {
 
-                }
-                if (i <= 2) { //empty
-                    cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
-                }
             }
+            if (i <= 2) { //empty
+                closedir(directory);
+                cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp); ///DEV doesnt work atm returns errno: 13 everytime
+            }
+        } else {
             closedir(directory);
-        #elif _MSC_VER
-            TCHAR szDir[MAX_PATH];
-            StringCchCopy(szDir, MAX_PATH, (std::wstring(backupPath.begin(), backupPath.end())).c_str());
+        }
+    #elif _MSC_VER
+        TCHAR szDir[MAX_PATH];
+        StringCchCopy(szDir, MAX_PATH, (std::wstring(backupPath.begin(), backupPath.end())).c_str());
 
-            if (PathIsDirectoryEmpty(szDir)) {
-                std::cout << GetLastError();
-                cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
-            }
-        #endif
-    }
+        if (PathIsDirectoryEmpty(szDir)) {
+            std::cout << GetLastError();
+            cleanUp = ((std::remove(backupPath.c_str()) == 0) && cleanUp);
+        }
+    #endif
     return cleanUp;
 }
