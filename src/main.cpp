@@ -369,6 +369,7 @@ void getHelp() { //help and info section
     std::cout << "  Bonifarz" << std::endl;
     std::cout << "  M. Celik" << std::endl;
     std::cout << "Language: C++" << std::endl;
+    std::cout << "Web: https://github.com/atomprobempie/FourierTransformation" << std::endl;
     std::cout << "License: GPLv3 (http://www.gnu.org/licenses/gpl.html)" << std::endl;
     std::cout << std::endl;
     std::cout << "HELP" << std::endl;

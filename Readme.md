@@ -12,6 +12,9 @@ Exported as a 32bit big endian binary file with the file ending .pos and this fo
 
 For more help start the program over the terminal with `-help`.
 
+## Web
+https://github.com/atomprobempie/FourierTransformation
+
 ## Credits
 - Developer
   - Iceflower S
