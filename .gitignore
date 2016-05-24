@@ -1,15 +1,15 @@
+/.vs
+/Debug
+/FourierTransformation.depend
+/FourierTransformation.layout
+/My Inspector XE Results - FourierTransformation
+/Release
 /backup
 /bin
-/Debug
-/Release
 /export
 /import
 /obj
-/FourierTransformation.depend
-/FourierTransformation.layout
-/.vs
 /x64
-/My Inspector XE Results - FourierTransformation
 *.db
 *.exe
 *.opendb

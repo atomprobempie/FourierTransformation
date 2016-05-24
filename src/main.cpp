@@ -315,6 +315,7 @@ int main(int argc, char* argv[]) {
         time(&end);
         std::cout << "DONE: calculating DFT" << std::endl; //status msg
         std::cout << "Note: needed time: " << std::setprecision(1) << (float) (difftime(end, start) / 60) << " minutes" << std::endl; //status msg
+		delete[] threads;
     } //end - DFT
 
     {
