@@ -148,14 +148,20 @@ int main(int argc, char* argv[]) {
         }
 
         try {
-            if ((std::stof(reciStart) >= std::stof(reciEnds)) || (std::stof(reciDistance) <= 0) || (((std::stof(reciEnds) - std::stof(reciStart)) / std::stof(reciDistance)) < 1)) { //(((std::stof(reciEnds) - std::stof(reciStart)) / reciDistance) < 1) : no correct reciprocal space could be init start: 0 end: 4 but distance is 5
-                std::cout << "ERROR: reciprocal values are not correct." << std::endl; //status msg
+            if ((std::stof(reciStart) >= std::stof(reciEnds)) || (std::stof(reciDistance) <= 0) || (fabsf(std::stof(reciEnds) - std::stof(reciStart)) < std::stof(reciDistance))) { //(fabsf(std::stof(reciEnds) - std::stof(reciStart)) < std::stof(reciDistance)) : no correct reciprocal space could be init start: 0 end: 4 but distance is 5
+                std::cout << "ERROR: reciprocal values are not correct" << std::endl; //status msg
                 std::cout << "CLOSED" << std::endl; //status msg
                 return -1;
+            } else {
+                reciList.reserve(pow((int) (fabsf(std::stof(reciEnds) - std::stof(reciStart)) / std::stof(reciDistance)), 3));
             }
         } catch (std::out_of_range) {
             std::cout << "ERROR: reciprocal values are not correct. One or more are out of range." << std::endl; //status msg
             std::cout << "CLOSED" << std::endl; //status msg
+            return -1;
+        } catch (std::bad_alloc) {
+            std::cout << "ERROR: not enough main memory for this reciprocal space" << std::endl;
+            std::cout << "CLOSED" << std::endl;
             return -1;
         }
 
