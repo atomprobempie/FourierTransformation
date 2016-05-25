@@ -26,6 +26,17 @@ https://github.com/atomprobempie/FourierTransformation
 - IDE
 	Code::Blocks
 
+## FAQ
+- I got the message `The program can't start because MSVCP140.dll is missing from your computer. Try reinstalling the program to fix this problem`
+  - Install Visual C++ Redistributable for Visual Studio 2015
+    - https://www.microsoft.com/en-us/download/details.aspx?id=48145
+- I got the message `This program can't start because libiomp5md.dll is missing from your computer. Try reinstalling the program to fix this problem`
+  - Install the lastest update for Intel® Parallel Studio XE 2016 Composer Edition for C++ Windows* redistributabe package 
+    - https://software.intel.com/en-us/articles/redistributables-for-intel-parallel-studio-xe-2016-composer-edition-for-windows
+- My screen is freezing.
+  - Your CPU has too much to do.
+  - You used a to big reciprocal space and run out of memory.
+
 ##License
 ![Image of GPLv3](http://www.gnu.org/graphics/gplv3-127x51.png)
 
