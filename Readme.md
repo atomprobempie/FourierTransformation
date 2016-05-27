@@ -24,7 +24,12 @@ https://github.com/atomprobempie/FourierTransformation
   - Bonifarz
   - M. Celik
 - IDE
-	Code::Blocks
+  - Code::Blocks
+  - Visual Studio 2015
+- Compiler
+  - GNU Compiler Collection
+  - Intel® C++ Compiler
+  - Mingw-w64
 
 ## FAQ
 - I got the message `The program can't start because MSVCP140.dll is missing from your computer. Try reinstalling the program to fix this problem`
