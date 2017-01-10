@@ -39,9 +39,6 @@
 
 #include <time.h>
 
-#ifndef M_PI
-    #define M_PI ((float) 3.141592653589793238462)
-#endif
 #ifndef floatRegex
     #define floatRegex ("-?(([1-9][[:d:]]*)|0)(\\.[[:d:]]*[1-9])?((e|E)-?[1-9][[:d:]]*)?")
 #endif
@@ -50,6 +47,7 @@
 #include <iomanip>
 #include <stdint.h>
 #include "FileStatsStruct.h"
+#include "MagicMath.h"
 
 void getHelp();
 void getPaths(std::string &sourcePath, std::string &exportPath);
@@ -61,12 +59,7 @@ bool checkExportPath(std::string& exportPath, bool forceCreatePath);
 uint32_t getHash(const std::string path);
 bool readInputFile(const std::string path, std::vector<float>& dataList);
 std::string checkBackup(const std::string backupPath, const uint32_t hashValue, const std::string reciStart, const std::string reciEnds, const std::string reciDistance);
-void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance);
-void calcPartSize(std::vector<size_t>& boundsList, const size_t numbers, const size_t maxThreads);
-bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float> >& outputList, const size_t ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, size_t& maxThreads);
-void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList);
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList, const std::string backupPath);
-const std::string getProgressBar(float percent);
+bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float> >& outputList, const size_t ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, size_t& maxThreads);const std::string getProgressBar(float percent);
 void DFTprogress(const std::vector< std::vector<float> >& outputList, const size_t finishValue, const int updateTime, const int showBarTheme);
 const std::string getCurrentTime();
 bool saveToFile(const std::vector<float>& reciList, const std::vector< std::vector<float> >& outputList, const std::string DFToutputPath);
@@ -231,7 +224,7 @@ int main(int argc, char* argv[]) {
     std::cout << "DONE: generate hash" << std::endl; //status msg
 
     //create reciprocal lattice
-    createReciLattice(reciList, std::stof(reciStart), std::stof(reciEnds), std::stof(reciDistance));
+    MagicMath::createReciLattice(reciList, std::stof(reciStart), std::stof(reciEnds), std::stof(reciDistance));
     std::cout << "Reciprocal Lattice:" << std::endl;
     std::cout << "  Start: " << reciStart << std::endl;
     std::cout << "  End: " << reciEnds << std::endl;
@@ -264,7 +257,7 @@ int main(int argc, char* argv[]) {
                 maxThreads = 1;
             }
 
-            calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList, every thread get his own area
+            MagicMath::calcPartSize(boundsList, (reciList.size() / 3), maxThreads); //save the bounds into boundsList, every thread get his own area
 
             //init the temp paths and save backup config file
             backupPathList.push_back(backupPath + "backupcfg_" + getCurrentTime() + ".ctmp"); //first entry it the config path
@@ -295,9 +288,9 @@ int main(int argc, char* argv[]) {
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads, seems to be possible even with maxThreads = 1
         for (size_t i = 1; i < maxThreads; ++i) {
             if (useBackup) {
-                threads[i - 1] = std::thread(DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
+                threads[i - 1] = std::thread(MagicMath::DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
             } else {
-                threads[i - 1] = std::thread(DFT, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
+                threads[i - 1] = std::thread(MagicMath::DFT, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i])); //std::ref forces the input as reference because thread doesnt allow this normally
             }
         }
         std::thread progressT = std::thread(DFTprogress, std::ref(outputList), (reciList.size() / 3), 2, 3); //DFTprogress thread
@@ -308,9 +301,9 @@ int main(int argc, char* argv[]) {
         time_t start, end;
         time(&start);
         if (useBackup) {
-            DFTwithBackup(dataList, reciList, boundsList[0], boundsList[1], outputList[0], backupPathList[1]);
+            MagicMath::DFTwithBackup(dataList, reciList, boundsList[0], boundsList[1], outputList[0], backupPathList[1]);
         } else {
-            DFT(dataList, reciList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
+            MagicMath::DFT(dataList, reciList, boundsList[0], boundsList[1], outputList[0]); //use the main thread for calculating too
         }
         for (size_t i = 0; i < maxThreads - 1; ++i) { //join maxThreads - 1 threads
             threads[i].join();
@@ -775,29 +768,6 @@ std::string checkBackup(const std::string backupPath, const uint32_t hashValue, 
     return (backupPath + backupFile);
 }
 
-void createReciLattice(std::vector<float>& reciList, const float start, const float ends, const float distance) { //create reciprocal space
-    for (float i = start; i <= ends; i += distance) {
-        for (float k = start; k <= ends; k += distance) {
-            for (float o = start; o <= ends; o += distance) {
-                reciList.push_back(i);
-                reciList.push_back(k);
-                reciList.push_back(o);
-            }
-        }
-    }
-}
-
-void calcPartSize(std::vector<size_t>& boundsList, const size_t numbers, const size_t maxThreads) {
-    size_t partsize = numbers / maxThreads;
-
-    size_t curPart = 0;
-    for (size_t i = 0; i < maxThreads; i++) {
-        boundsList.push_back(curPart); //start value
-        curPart = curPart + partsize + ((i < numbers % maxThreads) ? 1 : 0); //+ ((i < numbers % maxThreads) ? 1 : 0) : adds one extra calculation part if the threads cannot allocate overall the same part size; e.g. 4 threads, 5 calc.parts then the first thread will be calc 2
-        boundsList.push_back(curPart); //end value
-    }
-}
-
 bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float> >& outputList, const size_t ends, const std::string backupPath, const std::string backupCfgFilePath, std::vector<std::string>& backupPathList, size_t& maxThreads) {
     //next check, if the the backup config file has all important values
     backupPathList.push_back(backupCfgFilePath);
@@ -838,45 +808,6 @@ bool loadBackup(std::vector<size_t>& boundsList, std::vector< std::vector<float>
     maxThreads = i;
     backupCfg.close();
     return true;
-}
-
-void DFT(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList) {
-    const size_t srcSize = (dataList.size() / 3); //
-    float tempRe = 0; //real part
-    float tempIm = 0; //imaginary part
-
-    for (size_t s = start; s < ends; s++) {
-        tempRe = 0;
-        tempIm = 0;
-        for (size_t k = 0; k < srcSize; k++) {
-            tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
-            tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
-        }
-        threadOutputList.push_back(std::sqrt(tempIm * tempIm + tempRe * tempRe));  //norm of real and imaginary
-    }
-}
-
-void DFTwithBackup(const std::vector<float>& dataList, const std::vector<float>& reciList, const size_t start, const size_t ends, std::vector<float>& threadOutputList, const std::string backupPath) {
-    std::ofstream backupFile;
-    backupFile.open(backupPath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
-
-    const size_t srcSize = (dataList.size() / 3); //
-    float tempRe = 0; //real part
-    float tempIm = 0; //imaginary part
-    float result = 0;
-
-    for (size_t s = start; s < ends; s++) {
-        tempRe = 0;
-        tempIm = 0;
-        for (size_t k = 0; k < srcSize; k++) {
-            tempRe += std::cos( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
-            tempIm += std::sin( 2 * M_PI * (dataList[k * 3] * reciList[s * 3] + dataList[k * 3 + 1] * reciList[s * 3 + 1] + dataList[k * 3 + 2] * reciList[s * 3 + 2]));
-        }
-        result = std::sqrt(tempIm * tempIm + tempRe * tempRe); //norm of real and imaginary
-        backupFile.write((char*)& result, sizeof(float));
-        threadOutputList.push_back(result);
-    }
-    backupFile.close();
 }
 
 const std::string getProgressBar(const float percent) { //progressbar with numbers after the decimal point
