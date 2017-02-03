@@ -279,14 +279,21 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "Note: " << maxThreads << " threads will be used for calculating." << std::endl; //status msg
 
-        //init the outputlist
-        for (size_t i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
-            outputList.push_back(std::vector<float>());
+        try {
+            //init the outputlist
+            for (size_t i = 0; i < maxThreads; i++) { //init the threadLists, every thread will save into his own threadList
+                outputList.push_back(std::vector<float>());
+                outputList[i].reserve(boundsList[i * 2 + 1] - boundsList[i * 2]);
+            }
+        } catch (std::bad_alloc) {
+            std::cout << "ERROR: not enough main memory for this output list" << std::endl;
+            std::cout << "CLOSED" << std::endl;
+            return -1;
         }
 
         //configure threads
         std::thread *threads = new std::thread[maxThreads - 1]; //init the calc threads, seems to be possible even with maxThreads = 1
-        for (size_t i = 1; i < maxThreads; ++i) {
+        for (size_t i = 1; i < maxThreads; i++) {
             if (useBackup) {
                 threads[i - 1] = std::thread(MagicMath::DFTwithBackup, std::ref(dataList), std::ref(reciList), boundsList[i * 2], boundsList[i * 2 + 1], std::ref(outputList[i]), backupPathList[i + 1]); //std::ref forces the input as reference because thread doesnt allow this normally; backupPathList + 1 cause the first entry it the config path
             } else {
