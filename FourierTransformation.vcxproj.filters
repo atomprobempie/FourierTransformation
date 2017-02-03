@@ -21,9 +21,15 @@
     <ClCompile Include="src\FileStatsStruct.cpp">
       <Filter>source</Filter>
     </ClCompile>
+    <ClCompile Include="src\MagicMath.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\FileStatsStruct.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MagicMath.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
